@@ -15,6 +15,10 @@
 #include "d3d12.h"
 #include "d3dx12_default.h"
 
+#ifndef D3D12_RESOURCE_FLAG_USE_TIGHT_ALIGNMENT
+#define D3DX12_USE_TIGHT_ALIGNMENT_UNAVAILABLE 1
+#endif
+
 //------------------------------------------------------------------------------------------------
 #ifndef D3DX12_ASSERT
   #ifdef assert
@@ -1603,19 +1607,26 @@ inline const CD3DX12_RESOURCE_DESC1* D3DX12ConditionallyExpandAPIDesc(
             {
                 LclDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
             }
-            else if (!(tightAlignmentSupported && (pDesc->Flags & D3D12_RESOURCE_FLAG_USE_TIGHT_ALIGNMENT))
-                    || (pDesc->Flags & D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER))
+            else if (
+#ifdef D3DX12_USE_TIGHT_ALIGNMENT_UNAVAILABLE
+                    true
+#else
+                    !(tightAlignmentSupported && (pDesc->Flags & D3D12_RESOURCE_FLAG_USE_TIGHT_ALIGNMENT))
+                    || (pDesc->Flags & D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER)
+#endif
+                    )
             {
                     LclDesc.Alignment =
                         (pDesc->SampleDesc.Count > 1 ? D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT : D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
             }
             else
             {
-                // Tight alignment is supported and we aren't a cross adapter resource, now just need to set the alignment field to the minimum alignment for each type
+#ifndef D3DX12_USE_TIGHT_ALIGNMENT_UNAVAILABLE
                 if(alignAsCommitted)
                     LclDesc.Alignment = D3D12_TIGHT_ALIGNMENT_MIN_COMMITTED_RESOURCE_ALIGNMENT;
                 else
                     LclDesc.Alignment = D3D12_TIGHT_ALIGNMENT_MIN_PLACED_RESOURCE_ALIGNMENT;
+#endif
 			}
         }
         return &LclDesc;
@@ -2051,6 +2062,7 @@ struct CD3DX12_RT_FORMAT_ARRAY : public D3D12_RT_FORMAT_ARRAY
 };
 
 //------------------------------------------------------------------------------------------------
+#if defined(D3D12_SDK_VERSION) && (D3D12_SDK_VERSION >= 618)
 struct CD3DX12_SERIALIZED_ROOT_SIGNATURE_DESC : public D3D12_SERIALIZED_ROOT_SIGNATURE_DESC
 {
     CD3DX12_SERIALIZED_ROOT_SIGNATURE_DESC() = default;
@@ -2069,3 +2081,4 @@ struct CD3DX12_SERIALIZED_ROOT_SIGNATURE_DESC : public D3D12_SERIALIZED_ROOT_SIG
         SerializedBlobSizeInBytes = size;
     }
 };
+#endif
