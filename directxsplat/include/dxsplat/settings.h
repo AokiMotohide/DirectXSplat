@@ -1,0 +1,80 @@
+#pragma once
+
+#include <cstdint>
+
+#include "dxsplat/math.h"
+#include "dxsplat/scene.h"
+#include "dxsplat/sort.h"
+#include "dxsplat/types.h"
+
+namespace dxsplat {
+
+enum class ShadingDegree {
+  Dc = 0,
+  Degree1 = 1,
+  Degree2 = 2,
+  Degree3 = 3,
+};
+
+constexpr ShadingDegree SanitizeShadingDegree(ShadingDegree degree) {
+  switch (degree) {
+    case ShadingDegree::Dc:
+    case ShadingDegree::Degree1:
+    case ShadingDegree::Degree2:
+    case ShadingDegree::Degree3:
+      return degree;
+    default:
+      return ShadingDegree::Degree3;
+  }
+}
+
+struct RenderSettings {
+  bool antialiasing = true;
+  float antialiasingStrength = 1.0f;
+  bool fastCulling = true;
+  float frustumDilation = 0.05f;
+  float gaussianScalingModifier = 1.0f;
+  bool outputDepth = false;
+  ShadingDegree shadingDegree = ShadingDegree::Degree3;
+  bool positiveViewSpaceZ = true;
+  float maxAxisPixels = 256.0f;
+  uint64_t splatBudget = 0;
+  float lodHysteresis = 0.15f;
+};
+
+struct FrameStats {
+  uint64_t gaussiansVisible = 0;
+  uint64_t gaussiansTotal = 0;
+  uint64_t residentGaussians = 0;
+  uint64_t residentChunks = 0;
+  uint64_t splatBudget = 0;
+  uint64_t streamedUploads = 0;
+  uint64_t streamedEvictions = 0;
+  uint64_t lod0Chunks = 0;
+  uint64_t lod1Chunks = 0;
+  uint64_t lod2Chunks = 0;
+  uint64_t sortPasses = 0;
+  SortBackend sortBackend = SortBackend::OneSweep;
+  float gpuPrepareMs = 0.0f;
+  float gpuSortMs = 0.0f;
+  float gpuRasterMs = 0.0f;
+  float gpuDepthMs = 0.0f;
+  float gpuMs = 0.0f;
+  float cpuMs = 0.0f;
+};
+
+struct RenderInput {
+  Mat4 view{};
+  Mat4 proj{};
+  Vec3 cameraPosition{};
+  RenderSettings settings{};
+  uint32_t viewportWidth = 1;
+  uint32_t viewportHeight = 1;
+  float nearPlane = 0.1f;
+  float farPlane = 5000.0f;
+  Vec2 jitter{};
+  bool cameraCut = false;
+  uint64_t frameIndex = 0;
+};
+
+}  // namespace dxsplat

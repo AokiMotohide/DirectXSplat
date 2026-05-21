@@ -1,0 +1,45 @@
+if(NOT DEFINED OUTPUT)
+  message(FATAL_ERROR "OUTPUT is required")
+endif()
+
+if(NOT DEFINED COMPUTE_INPUT)
+  message(FATAL_ERROR "COMPUTE_INPUT is required")
+endif()
+
+if(NOT DEFINED RASTER_INPUT)
+  message(FATAL_ERROR "RASTER_INPUT is required")
+endif()
+
+if(NOT DEFINED ONESWEEP_INPUT)
+  message(FATAL_ERROR "ONESWEEP_INPUT is required")
+endif()
+
+if(NOT DEFINED SWEEP_COMMON_INPUT)
+  message(FATAL_ERROR "SWEEP_COMMON_INPUT is required")
+endif()
+
+if(NOT DEFINED SORT_COMMON_INPUT)
+  message(FATAL_ERROR "SORT_COMMON_INPUT is required")
+endif()
+
+function(append_embedded NAME INPUT_PATH)
+  file(READ "${INPUT_PATH}" CONTENT)
+  string(REPLACE "\\" "\\\\" ESCAPED "${CONTENT}")
+  string(REPLACE "\"" "\\\"" ESCAPED "${ESCAPED}")
+  string(REPLACE "\r" "" ESCAPED "${ESCAPED}")
+  string(REPLACE "\n" "\\n\"\n\"" ESCAPED "${ESCAPED}")
+  file(APPEND "${OUTPUT}" "inline constexpr char k${NAME}Name[] = \"${INPUT_PATH}\";\n")
+  file(APPEND "${OUTPUT}" "inline constexpr char k${NAME}Source[] =\n\"${ESCAPED}\";\n")
+  file(APPEND "${OUTPUT}" "inline constexpr size_t k${NAME}Size = sizeof(k${NAME}Source) - 1;\n\n")
+endfunction()
+
+get_filename_component(OUTPUT_DIR "${OUTPUT}" DIRECTORY)
+file(MAKE_DIRECTORY "${OUTPUT_DIR}")
+
+file(WRITE "${OUTPUT}" "#pragma once\n\n#include <cstddef>\n\nnamespace dxsplat::embedded {\n\n")
+append_embedded("GaussianComputeShader" "${COMPUTE_INPUT}")
+append_embedded("GaussianRasterShader" "${RASTER_INPUT}")
+append_embedded("OneSweepShader" "${ONESWEEP_INPUT}")
+append_embedded("SweepCommonShader" "${SWEEP_COMMON_INPUT}")
+append_embedded("SortCommonShader" "${SORT_COMMON_INPUT}")
+file(APPEND "${OUTPUT}" "}  // namespace dxsplat::embedded\n")

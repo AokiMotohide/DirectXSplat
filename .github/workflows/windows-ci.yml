@@ -1,0 +1,132 @@
+name: Core Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      run_warp_renderer_tests:
+        description: Run optional D3D12/WARP renderer tests
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  msvc-core:
+    name: MSVC ${{ matrix.config }} core tests
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - Debug
+          - Release
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake without GPU tests
+        run: >
+          cmake -S . -B "build/core-${{ matrix.config }}"
+          -G "Visual Studio 17 2022" -A x64
+          -DDXSPLAT_BUILD_TESTS=ON
+          -DDXSPLAT_BUILD_SAMPLE=ON
+          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDXSPLAT_ENABLE_WARNINGS=ON
+
+      - name: Build library, sample, and tests
+        run: >
+          cmake --build "build/core-${{ matrix.config }}"
+          --config ${{ matrix.config }}
+          --parallel
+
+      - name: List discovered tests
+        run: ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} -N
+
+      - name: Run all core tests
+        run: >
+          ctest --test-dir "build/core-${{ matrix.config }}"
+          -C ${{ matrix.config }}
+          --output-on-failure
+          --no-tests=error
+
+      - name: Run loader and hostile input tests
+        if: matrix.config == 'Release'
+        run: >
+          ctest --test-dir "build/core-${{ matrix.config }}"
+          -C ${{ matrix.config }}
+          -R "Scene IO|PPM loader|DetectSceneFormat"
+          --output-on-failure
+          --no-tests=error
+
+      - name: Run layout and shader invariant tests
+        if: matrix.config == 'Release'
+        run: >
+          ctest --test-dir "build/core-${{ matrix.config }}"
+          -C ${{ matrix.config }}
+          -R "VRAM format|CPU diagnostic|HLSL|Shaders stay final-only"
+          --output-on-failure
+          --no-tests=error
+
+  library-only-core:
+    name: Library-only tests without sample app
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure library-only tests
+        run: >
+          cmake -S . -B build/library-only
+          -G "Visual Studio 17 2022" -A x64
+          -DDXSPLAT_BUILD_TESTS=ON
+          -DDXSPLAT_BUILD_SAMPLE=OFF
+          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDXSPLAT_ENABLE_WARNINGS=ON
+
+      - name: Build library-only tests
+        run: cmake --build build/library-only --config Release --parallel
+
+      - name: Run library-only tests
+        run: ctest --test-dir build/library-only -C Release --output-on-failure --no-tests=error
+
+  optional-warp-renderer:
+    name: Optional D3D12/WARP renderer tests
+    runs-on: windows-2022
+    if: github.event_name == 'workflow_dispatch' && inputs.run_warp_renderer_tests
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure WARP renderer tests
+        run: >
+          cmake -S . -B build/warp-renderer
+          -G "Visual Studio 17 2022" -A x64
+          -DDXSPLAT_BUILD_TESTS=ON
+          -DDXSPLAT_BUILD_SAMPLE=OFF
+          -DDXSPLAT_ENABLE_GPU_TESTS=ON
+          -DDXSPLAT_ENABLE_WARNINGS=ON
+
+      - name: Build renderer tests
+        run: cmake --build build/warp-renderer --config Release --parallel
+
+      - name: Run renderer tests
+        run: >
+          ctest --test-dir build/warp-renderer
+          -C Release
+          -R "Renderer"
+          --output-on-failure
+          --no-tests=error

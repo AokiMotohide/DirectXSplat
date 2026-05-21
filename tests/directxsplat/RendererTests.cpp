@@ -1,0 +1,971 @@
+#include <doctest/doctest.h>
+
+#include <Windows.h>
+#include <d3d12.h>
+#include <d3d12sdklayers.h>
+#include <dxgi1_6.h>
+#include <wrl/client.h>
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <future>
+#include <stdexcept>
+#include <sstream>
+#include <vector>
+
+#include "dxsplat/context.h"
+#include "dxsplat/extensions.h"
+#include "dxsplat/gpu_resources.h"
+#include "dxsplat/math.h"
+#include "dxsplat/render_hooks.h"
+#include "dxsplat/renderer.h"
+#include "dxsplat/scene.h"
+#include "dxsplat/settings.h"
+#include "dxsplat/types.h"
+#include "dxsplat/vram_format.h"
+
+namespace dxsplat {
+namespace {
+
+using Microsoft::WRL::ComPtr;
+
+constexpr float kShC0 = 0.28209479177387814f;
+
+struct OffscreenFrame {
+  ComPtr<ID3D12Resource> colorTexture;
+  ComPtr<ID3D12Resource> colorReadback;
+  ComPtr<ID3D12DescriptorHeap> rtvHeap;
+  D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
+  D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+  uint32_t width = 0;
+  uint32_t height = 0;
+  RenderTargetBinding binding{};
+};
+
+class RenderHarness {
+ public:
+  ~RenderHarness() {
+    renderer_.Shutdown();
+    context_.Shutdown();
+    if (fenceEvent_ != nullptr) {
+      CloseHandle(fenceEvent_);
+      fenceEvent_ = nullptr;
+    }
+  }
+
+  Status Initialize() {
+    if (ComPtr<ID3D12Debug> debug; SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf())))) {
+      debug->EnableDebugLayer();
+    }
+    if (ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dredSettings;
+        SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(dredSettings.GetAddressOf())))) {
+      dredSettings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+      dredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    }
+
+    HRESULT hr = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(factory_.GetAddressOf()));
+    if (FAILED(hr)) {
+      hr = CreateDXGIFactory2(0, IID_PPV_ARGS(factory_.GetAddressOf()));
+    }
+    if (FAILED(hr)) {
+      return Status::Error("failed creating DXGI factory");
+    }
+
+    const bool forceWarp = GetEnvironmentVariableW(L"DXSPLAT_TEST_FORCE_WARP", nullptr, 0) != 0;
+    if (!forceWarp) {
+      for (UINT adapterIndex = 0; ; ++adapterIndex) {
+        ComPtr<IDXGIAdapter1> candidate;
+        hr = factory_->EnumAdapterByGpuPreference(adapterIndex,
+                                                  DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                                                  IID_PPV_ARGS(candidate.GetAddressOf()));
+        if (hr == DXGI_ERROR_NOT_FOUND) {
+          break;
+        }
+        if (FAILED(hr)) {
+          break;
+        }
+        DXGI_ADAPTER_DESC1 desc{};
+        candidate->GetDesc1(&desc);
+        if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) {
+          continue;
+        }
+        if (SUCCEEDED(D3D12CreateDevice(candidate.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.ReleaseAndGetAddressOf())))) {
+          adapter_ = candidate;
+          break;
+        }
+      }
+    }
+
+    if (device_ == nullptr) {
+      hr = factory_->EnumWarpAdapter(IID_PPV_ARGS(adapter_.ReleaseAndGetAddressOf()));
+      if (FAILED(hr)) {
+        return Status::Error("failed acquiring WARP adapter");
+      }
+      hr = D3D12CreateDevice(adapter_.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.ReleaseAndGetAddressOf()));
+      if (FAILED(hr)) {
+        return Status::Error("failed creating D3D12 device");
+      }
+    }
+
+    D3D12_COMMAND_QUEUE_DESC queueDesc{};
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    hr = device_->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(queue_.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating direct queue");
+    }
+
+    hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(allocator_.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating command allocator");
+    }
+
+    hr = device_->CreateCommandList(0,
+                                    D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                    allocator_.Get(),
+                                    nullptr,
+                                    IID_PPV_ARGS(commandList_.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating command list");
+    }
+    commandList_->SetName(L"DirectXSplatTestsCommandList");
+    commandList_->Close();
+
+    hr = device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence_.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating fence");
+    }
+
+    fenceEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (fenceEvent_ == nullptr) {
+      return Status::Error("failed creating fence event");
+    }
+
+    Status status = context_.Initialize(device_.Get(), queue_.Get(), fence_.Get());
+    if (!status.ok) {
+      return status;
+    }
+    return renderer_.Initialize(context_);
+  }
+
+  Status ResetCommandList() {
+    HRESULT hr = allocator_->Reset();
+    if (FAILED(hr)) {
+      return Status::Error("failed resetting command allocator");
+    }
+    hr = commandList_->Reset(allocator_.Get(), nullptr);
+    if (FAILED(hr)) {
+      return Status::Error("failed resetting command list");
+    }
+    return Status::Ok();
+  }
+
+  Status QueueUploadSync(UploadSyncPoint sync) {
+    if (!sync.IsValid()) {
+      return Status::Ok();
+    }
+    HRESULT hr = queue_->Wait(sync.fence, sync.value);
+    if (FAILED(hr)) {
+      return Status::Error("failed waiting for upload sync point");
+    }
+    return Status::Ok();
+  }
+
+  Status ExecuteAndWait(UploadSyncPoint sync = {}) {
+    Status syncStatus = QueueUploadSync(sync);
+    if (!syncStatus.ok) {
+      return syncStatus;
+    }
+    HRESULT hr = commandList_->Close();
+    if (FAILED(hr)) {
+      return Status::Error("failed closing command list");
+    }
+    ID3D12CommandList* lists[] = {commandList_.Get()};
+    queue_->ExecuteCommandLists(1, lists);
+    const uint64_t targetFence = ++fenceValue_;
+    hr = queue_->Signal(fence_.Get(), targetFence);
+    if (FAILED(hr)) {
+      return Status::Error("failed signaling fence");
+    }
+    if (fence_->GetCompletedValue() < targetFence) {
+      hr = fence_->SetEventOnCompletion(targetFence, fenceEvent_);
+      if (FAILED(hr)) {
+        return Status::Error("failed waiting for fence");
+      }
+      WaitForSingleObject(fenceEvent_, INFINITE);
+    }
+    return Status::Ok();
+  }
+
+  Status SignalFenceOnly() {
+    const uint64_t targetFence = ++fenceValue_;
+    HRESULT hr = queue_->Signal(fence_.Get(), targetFence);
+    if (FAILED(hr)) {
+      return Status::Error("failed signaling fence");
+    }
+    if (fence_->GetCompletedValue() < targetFence) {
+      hr = fence_->SetEventOnCompletion(targetFence, fenceEvent_);
+      if (FAILED(hr)) {
+        return Status::Error("failed waiting for fence");
+      }
+      WaitForSingleObject(fenceEvent_, INFINITE);
+    }
+    return Status::Ok();
+  }
+
+  RenderFrameContext FrameContext() const {
+    RenderFrameContext context{};
+    context.fence = fence_.Get();
+    context.completedFenceValue = fence_ != nullptr ? fence_->GetCompletedValue() : 0;
+    context.submissionFenceValue = fenceValue_ + 1;
+    context.frameIndex = fenceValue_;
+    return context;
+  }
+
+  Status CreateOffscreenFrame(uint32_t width, uint32_t height, OffscreenFrame& out) {
+    out = {};
+    out.width = width;
+    out.height = height;
+
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapProps.CreationNodeMask = 1;
+    heapProps.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Width = width;
+    desc.Height = height;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+    D3D12_CLEAR_VALUE clearValue{};
+    clearValue.Format = desc.Format;
+    clearValue.Color[0] = 0.0f;
+    clearValue.Color[1] = 0.0f;
+    clearValue.Color[2] = 0.0f;
+    clearValue.Color[3] = 1.0f;
+
+    HRESULT hr = device_->CreateCommittedResource(&heapProps,
+                                                  D3D12_HEAP_FLAG_NONE,
+                                                  &desc,
+                                                  D3D12_RESOURCE_STATE_COMMON,
+                                                  &clearValue,
+                                                  IID_PPV_ARGS(out.colorTexture.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating offscreen color texture");
+    }
+
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    rtvHeapDesc.NumDescriptors = 1;
+    hr = device_->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(out.rtvHeap.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating RTV heap");
+    }
+    out.rtv = out.rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    device_->CreateRenderTargetView(out.colorTexture.Get(), nullptr, out.rtv);
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    UINT rows = 0;
+    UINT64 rowBytes = 0;
+    UINT64 totalBytes = 0;
+    device_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &rows, &rowBytes, &totalBytes);
+    out.footprint = footprint;
+
+    D3D12_HEAP_PROPERTIES readbackHeapProps{};
+    readbackHeapProps.Type = D3D12_HEAP_TYPE_READBACK;
+    readbackHeapProps.CreationNodeMask = 1;
+    readbackHeapProps.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC readbackDesc{};
+    readbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    readbackDesc.Width = totalBytes;
+    readbackDesc.Height = 1;
+    readbackDesc.DepthOrArraySize = 1;
+    readbackDesc.MipLevels = 1;
+    readbackDesc.SampleDesc.Count = 1;
+    readbackDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    hr = device_->CreateCommittedResource(&readbackHeapProps,
+                                          D3D12_HEAP_FLAG_NONE,
+                                          &readbackDesc,
+                                          D3D12_RESOURCE_STATE_COPY_DEST,
+                                          nullptr,
+                                          IID_PPV_ARGS(out.colorReadback.GetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating color readback buffer");
+    }
+
+    out.binding.colorTarget = out.colorTexture.Get();
+    out.binding.colorRtv = out.rtv;
+    out.binding.colorFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    out.binding.colorStateBefore = D3D12_RESOURCE_STATE_COMMON;
+    out.binding.colorStateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    out.binding.transitionMode = ResourceTransitionMode::LibraryManaged;
+    out.binding.clearColor = true;
+    out.binding.clearColorValue[0] = 0.0f;
+    out.binding.clearColorValue[1] = 0.0f;
+    out.binding.clearColorValue[2] = 0.0f;
+    out.binding.clearColorValue[3] = 1.0f;
+    out.binding.viewport.TopLeftX = 0.0f;
+    out.binding.viewport.TopLeftY = 0.0f;
+    out.binding.viewport.Width = static_cast<float>(width);
+    out.binding.viewport.Height = static_cast<float>(height);
+    out.binding.viewport.MinDepth = 0.0f;
+    out.binding.viewport.MaxDepth = 1.0f;
+    out.binding.scissor.left = 0;
+    out.binding.scissor.top = 0;
+    out.binding.scissor.right = static_cast<LONG>(width);
+    out.binding.scissor.bottom = static_cast<LONG>(height);
+    return Status::Ok();
+  }
+
+  void QueueColorReadback(const OffscreenFrame& frame) {
+    D3D12_TEXTURE_COPY_LOCATION src{};
+    src.pResource = frame.colorTexture.Get();
+    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION dst{};
+    dst.pResource = frame.colorReadback.Get();
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dst.PlacedFootprint = frame.footprint;
+
+    commandList_->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+  }
+
+  std::vector<uint8_t> ReadbackColor(const OffscreenFrame& frame) const {
+    std::vector<uint8_t> pixels(static_cast<size_t>(frame.width) * frame.height * 4u, 0u);
+    void* mapped = nullptr;
+    const HRESULT hr = frame.colorReadback->Map(0, nullptr, &mapped);
+    if (FAILED(hr) || mapped == nullptr) {
+      return {};
+    }
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(mapped);
+    for (uint32_t y = 0; y < frame.height; ++y) {
+      std::memcpy(pixels.data() + static_cast<size_t>(y) * frame.width * 4u,
+                  src + static_cast<size_t>(y) * frame.footprint.Footprint.RowPitch,
+                  static_cast<size_t>(frame.width) * 4u);
+    }
+    frame.colorReadback->Unmap(0, nullptr);
+    return pixels;
+  }
+
+  HRESULT DeviceRemovedReason() const {
+    return device_ != nullptr ? device_->GetDeviceRemovedReason() : E_FAIL;
+  }
+
+  std::string DebugMessages() const {
+    if (device_ == nullptr) {
+      return {};
+    }
+    std::string out;
+    if (ComPtr<ID3D12InfoQueue> infoQueue; SUCCEEDED(device_.As(&infoQueue)) && infoQueue != nullptr) {
+      const UINT64 count = infoQueue->GetNumStoredMessagesAllowedByRetrievalFilter();
+      const UINT64 begin = count > 12 ? count - 12 : 0;
+      for (UINT64 i = begin; i < count; ++i) {
+        SIZE_T bytes = 0;
+        if (FAILED(infoQueue->GetMessage(i, nullptr, &bytes)) || bytes == 0) {
+          continue;
+        }
+        std::string storage(bytes, '\0');
+        auto* message = reinterpret_cast<D3D12_MESSAGE*>(storage.data());
+        if (FAILED(infoQueue->GetMessage(i, message, &bytes)) || message->pDescription == nullptr) {
+          continue;
+        }
+        out += "\n";
+        out += message->pDescription;
+      }
+    }
+    if (ComPtr<ID3D12DeviceRemovedExtendedData1> dred; SUCCEEDED(device_.As(&dred)) && dred != nullptr) {
+      D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 breadcrumbs{};
+      if (SUCCEEDED(dred->GetAutoBreadcrumbsOutput1(&breadcrumbs)) && breadcrumbs.pHeadAutoBreadcrumbNode != nullptr) {
+        out += "\nDRED breadcrumbs:";
+        for (const D3D12_AUTO_BREADCRUMB_NODE1* node = breadcrumbs.pHeadAutoBreadcrumbNode; node != nullptr;
+             node = node->pNext) {
+          out += "\n";
+          if (node->pCommandListDebugNameA != nullptr) {
+            out += node->pCommandListDebugNameA;
+          } else if (node->pCommandQueueDebugNameA != nullptr) {
+            out += node->pCommandQueueDebugNameA;
+          } else {
+            out += "<unnamed>";
+          }
+          out += " last=";
+          out += std::to_string(node->BreadcrumbCount);
+          out += "/";
+          out += std::to_string(node->pLastBreadcrumbValue != nullptr ? *node->pLastBreadcrumbValue : 0u);
+        }
+      }
+    }
+    return out;
+  }
+
+  Renderer& renderer() { return renderer_; }
+  ID3D12GraphicsCommandList* commandList() const { return commandList_.Get(); }
+
+ private:
+  ComPtr<IDXGIFactory6> factory_;
+  ComPtr<IDXGIAdapter1> adapter_;
+  ComPtr<ID3D12Device> device_;
+  ComPtr<ID3D12CommandQueue> queue_;
+  ComPtr<ID3D12CommandAllocator> allocator_;
+  ComPtr<ID3D12GraphicsCommandList> commandList_;
+  ComPtr<ID3D12Fence> fence_;
+  HANDLE fenceEvent_ = nullptr;
+  uint64_t fenceValue_ = 0;
+  D3D12Context context_;
+  Renderer renderer_;
+};
+
+Gaussian MakeGaussian(const Vec3& position, float r, float g, float b) {
+  Gaussian gaussian{};
+  gaussian.position = position;
+  gaussian.scale = {0.18f, 0.18f, 0.18f};
+  gaussian.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  gaussian.opacity = 1.0f;
+  gaussian.sh[0] = (r - 0.5f) / kShC0;
+  gaussian.sh[16] = (g - 0.5f) / kShC0;
+  gaussian.sh[32] = (b - 0.5f) / kShC0;
+  return gaussian;
+}
+
+Scene MakeTinyScene() {
+  Scene scene{};
+  GaussianSet set{};
+  set.name = "tiny";
+  set.gaussians.push_back(MakeGaussian({-0.2f, 0.0f, 2.5f}, 1.0f, 0.2f, 0.2f));
+  set.gaussians.push_back(MakeGaussian({0.2f, 0.0f, 2.8f}, 0.2f, 1.0f, 0.2f));
+  scene.splatSets.push_back(std::move(set));
+  return scene;
+}
+
+Scene MakeSceneWithColor(float x, float r, float g, float b) {
+  Scene scene{};
+  GaussianSet set{};
+  set.name = "color";
+  Gaussian a = MakeGaussian({x, 0.0f, 2.6f}, r, g, b);
+  a.scale = {0.45f, 0.45f, 0.45f};
+  Gaussian b0 = MakeGaussian({x + 0.18f, 0.08f, 2.9f}, b, r, g);
+  b0.scale = {0.35f, 0.35f, 0.35f};
+  set.gaussians.push_back(a);
+  set.gaussians.push_back(b0);
+  scene.splatSets.push_back(std::move(set));
+  return scene;
+}
+
+RenderInput MakeRenderInput(uint32_t width, uint32_t height) {
+  RenderInput input{};
+  input.view = LookAt({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f});
+  input.proj = Perspective(1.0f, static_cast<float>(width) / static_cast<float>(height), 0.01f, 100.0f);
+  input.cameraPosition = {0.0f, 0.0f, 0.0f};
+  input.viewportWidth = width;
+  input.viewportHeight = height;
+  input.settings.fastCulling = true;
+  input.settings.antialiasing = false;
+  input.settings.gaussianScalingModifier = 1.25f;
+  return input;
+}
+
+size_t CountNonZeroPixels(const std::vector<uint8_t>& pixels) {
+  size_t nonZero = 0;
+  for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
+    if (pixels[i] != 0 || pixels[i + 1] != 0 || pixels[i + 2] != 0) {
+      ++nonZero;
+    }
+  }
+  return nonZero;
+}
+
+}  
+
+TEST_CASE("Renderer default handles and settings are safe") {
+  UploadedSceneHandle sceneHandle{};
+  UploadedChunkHandle chunkHandle{};
+  SceneMutationToken mutationToken{};
+  SceneAccessInfo accessInfo{};
+  RenderSettings settings{};
+
+  CHECK_FALSE(sceneHandle.IsValid());
+  CHECK_FALSE(chunkHandle.IsValid());
+  CHECK_FALSE(mutationToken.IsValid());
+  CHECK_FALSE(accessInfo.readyToRender);
+  CHECK(settings.fastCulling);
+  CHECK(settings.antialiasing);
+}
+
+TEST_CASE("Renderer public APIs fail cleanly before initialization") {
+  Renderer renderer;
+  UploadedSceneHandle sceneHandle{};
+  UploadedChunkHandle chunkHandle{};
+  SceneMutationToken token{};
+  Scene scene = MakeTinyScene();
+  GaussianSet chunk = scene.splatSets.front();
+  UploadedSceneInfo sceneInfo{};
+  UploadedChunkInfo chunkInfo{};
+  SceneAccessInfo accessInfo{};
+  UploadedSceneGpuResources gpuResources{};
+  std::vector<UploadedChunkHandle> chunks;
+  RenderPreparationResult preparation{};
+  RenderResult result{};
+  RenderTargetBinding target{};
+  RenderInput input = MakeRenderInput(16, 16);
+
+  CHECK_FALSE(renderer.CreateUploadedScene(sceneHandle).ok);
+  CHECK_FALSE(renderer.CreateUploadedScene(scene, sceneHandle).ok);
+  CHECK_FALSE(renderer.UpdateUploadedScene(sceneHandle, scene).ok);
+  CHECK_FALSE(renderer.UpdateUploadedScene(token, scene).ok);
+  CHECK_FALSE(renderer.DestroyUploadedScene(sceneHandle).ok);
+  CHECK_FALSE(renderer.GetSceneAccessInfo(sceneHandle, accessInfo).ok);
+  CHECK_FALSE(renderer.GetUploadedSceneInfo(sceneHandle, sceneInfo).ok);
+  CHECK_FALSE(renderer.GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  CHECK_FALSE(renderer.GetUploadedSceneGpuResources(sceneHandle, RenderFrameContext{}, gpuResources).ok);
+  CHECK_FALSE(renderer.PrepareSceneForRender(sceneHandle, input, RenderFrameContext{}, &preparation).ok);
+  CHECK_FALSE(renderer.BeginSceneMutation(sceneHandle, token).ok);
+  CHECK_FALSE(renderer.EndSceneMutation(token).ok);
+  CHECK_FALSE(renderer.GetUploadedSceneChunks(sceneHandle, chunks).ok);
+  CHECK_FALSE(renderer.AddUploadedChunk(sceneHandle, chunk, chunkHandle).ok);
+  CHECK_FALSE(renderer.AddUploadedChunk(token, chunk, chunkHandle).ok);
+  CHECK_FALSE(renderer.UpdateUploadedChunk(sceneHandle, chunkHandle, chunk).ok);
+  CHECK_FALSE(renderer.UpdateUploadedChunk(token, chunkHandle, chunk).ok);
+  CHECK_FALSE(renderer.RemoveUploadedChunk(sceneHandle, chunkHandle).ok);
+  CHECK_FALSE(renderer.RemoveUploadedChunk(token, chunkHandle).ok);
+  CHECK_FALSE(renderer.SetUploadedChunkEnabled(sceneHandle, chunkHandle, true).ok);
+  CHECK_FALSE(renderer.SetUploadedChunkEnabled(token, chunkHandle, true).ok);
+  CHECK_FALSE(renderer.SetUploadedChunkScalingModifier(sceneHandle, chunkHandle, 1.0f).ok);
+  CHECK_FALSE(renderer.SetUploadedChunkScalingModifier(token, chunkHandle, 1.0f).ok);
+  CHECK_FALSE(renderer.Render(nullptr, target, sceneHandle, input, RenderFrameContext{}, result).ok);
+  CHECK_FALSE(renderer.Render(nullptr, target, sceneHandle, input, AdvancedRenderOptions{}, RenderFrameContext{}, result).ok);
+  CHECK_FALSE(renderer.IsUploadedSceneValid(sceneHandle));
+  CHECK_FALSE(renderer.IsUploadedChunkValid(sceneHandle, chunkHandle));
+}
+
+TEST_CASE("Renderer handles empty scenes and chunk operations") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(sceneHandle).ok);
+  REQUIRE(sceneHandle.IsValid());
+
+  UploadedSceneInfo sceneInfo{};
+  REQUIRE(harness.renderer().GetUploadedSceneInfo(sceneHandle, sceneInfo).ok);
+  CHECK(sceneInfo.chunkCount == 0u);
+
+  RenderPreparationResult preparation{};
+  RenderResult renderResult{};
+  const RenderInput input = MakeRenderInput(64, 64);
+  const RenderFrameContext frameContext = harness.FrameContext();
+  CHECK(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  OffscreenFrame frame{};
+  REQUIRE(harness.CreateOffscreenFrame(64, 64, frame).ok);
+  REQUIRE(harness.ResetCommandList().ok);
+  REQUIRE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+  harness.QueueColorReadback(frame);
+  REQUIRE(harness.ExecuteAndWait(renderResult.submission.uploadSyncPoint).ok);
+  CHECK_MESSAGE(harness.DeviceRemovedReason() == S_OK, harness.DebugMessages());
+
+  GaussianSet chunk = MakeTinyScene().splatSets.front();
+  UploadedChunkHandle chunkHandle{};
+  REQUIRE(harness.renderer().AddUploadedChunk(sceneHandle, chunk, chunkHandle).ok);
+  CHECK(chunkHandle.IsValid());
+  CHECK(harness.renderer().IsUploadedChunkValid(sceneHandle, chunkHandle));
+
+  UploadedChunkInfo chunkInfo{};
+  REQUIRE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  CHECK(chunkInfo.visible);
+  CHECK(chunkInfo.scalingModifier == doctest::Approx(1.0f));
+
+  std::vector<UploadedChunkHandle> chunkHandles;
+  REQUIRE(harness.renderer().GetUploadedSceneChunks(sceneHandle, chunkHandles).ok);
+  CHECK(chunkHandles.size() == 1u);
+
+  REQUIRE(harness.renderer().SetUploadedChunkScalingModifier(sceneHandle, chunkHandle, 0.75f).ok);
+  REQUIRE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  CHECK(chunkInfo.scalingModifier == doctest::Approx(0.75f));
+  REQUIRE(harness.renderer().SetUploadedChunkEnabled(sceneHandle, chunkHandle, false).ok);
+  REQUIRE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  CHECK_FALSE(chunkInfo.visible);
+  REQUIRE(harness.renderer().SetUploadedChunkEnabled(sceneHandle, chunkHandle, true).ok);
+  REQUIRE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  CHECK(chunkInfo.visible);
+  CHECK_FALSE(harness.renderer().UpdateUploadedChunk(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}, chunk).ok);
+  REQUIRE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  CHECK(chunkInfo.visible);
+  CHECK(chunkInfo.scalingModifier == doctest::Approx(0.75f));
+  CHECK_FALSE(harness.renderer().RemoveUploadedChunk(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}).ok);
+  CHECK_FALSE(harness.renderer().SetUploadedChunkEnabled(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}, true).ok);
+  CHECK_FALSE(harness.renderer().SetUploadedChunkScalingModifier(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}, 1.0f).ok);
+  REQUIRE(harness.renderer().RemoveUploadedChunk(sceneHandle, chunkHandle).ok);
+  CHECK_FALSE(harness.renderer().IsUploadedChunkValid(sceneHandle, chunkHandle));
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+}
+
+TEST_CASE("Renderer rejects stale frame contexts") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  const RenderInput input = MakeRenderInput(64, 64);
+  OffscreenFrame frame{};
+  REQUIRE(harness.CreateOffscreenFrame(64, 64, frame).ok);
+
+  RenderFrameContext stale = harness.FrameContext();
+  REQUIRE(harness.SignalFenceOnly().ok);
+  stale.completedFenceValue = stale.submissionFenceValue;
+  RenderResult renderResult{};
+  CHECK_FALSE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, stale, renderResult).ok);
+}
+
+TEST_CASE("Renderer reports dirty render errors as requiring submission") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  RenderPreparationResult preparation{};
+  const RenderInput input = MakeRenderInput(64, 64);
+  RenderFrameContext frameContext = harness.FrameContext();
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  OffscreenFrame frame{};
+  REQUIRE(harness.CreateOffscreenFrame(64, 64, frame).ok);
+  REQUIRE(harness.ResetCommandList().ok);
+
+  RenderHooks hooks{};
+  hooks.beforePrepare = [](const RenderHookContext&) { throw std::runtime_error("forced render hook failure"); };
+  AdvancedRenderOptions options{};
+  options.hooks = &hooks;
+  RenderResult result{};
+  const Status rendered = harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, options, frameContext, result);
+  CHECK_FALSE(rendered.ok);
+  CHECK(result.submission.submissionRequired);
+  CHECK(result.submission.submissionRequired);
+  REQUIRE(harness.ExecuteAndWait(result.submission.uploadSyncPoint).ok);
+  CHECK(harness.renderer().Reset().ok);
+}
+
+TEST_CASE("Renderer GPU resource export requires a lease and returns non-transitionable scene resources") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  RenderPreparationResult preparation{};
+  const RenderInput input = MakeRenderInput(64, 64);
+  RenderFrameContext frameContext = harness.FrameContext();
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  UploadedSceneGpuResources resources{};
+  RenderFrameContext stale = frameContext;
+  stale.completedFenceValue = stale.submissionFenceValue;
+  CHECK_FALSE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, stale, resources).ok);
+
+  resources = {};
+  REQUIRE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
+  CHECK(resources.scene == sceneHandle);
+  CHECK(resources.leaseFence == frameContext.fence);
+  CHECK(resources.leaseFenceValue == frameContext.submissionFenceValue);
+  CHECK(resources.submission.submissionRequired);
+  CHECK(resources.sceneGaussians.IsValid());
+  CHECK(resources.sceneIndexToChunk.IsValid());
+  CHECK_FALSE(resources.sceneGaussians.callerMayTransition);
+  CHECK_FALSE(resources.sceneIndexToChunk.callerMayTransition);
+  CHECK_FALSE(resources.sortedSceneIndices.IsValid());
+  CHECK_FALSE(resources.visibleCounter.IsValid());
+  REQUIRE(resources.chunks.size() == 1u);
+  CHECK(resources.chunks.front().gaussianData.IsValid());
+  CHECK_FALSE(resources.chunks.front().gaussianData.callerMayTransition);
+  REQUIRE(harness.SignalFenceOnly().ok);
+  CHECK(harness.renderer().Reset().ok);
+}
+
+TEST_CASE("Renderer GPU resource lease holds destruction until the caller fence is signaled") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  RenderPreparationResult preparation{};
+  const RenderInput input = MakeRenderInput(64, 64);
+  const RenderFrameContext frameContext = harness.FrameContext();
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  UploadedSceneGpuResources resources{};
+  REQUIRE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
+  auto destroyFuture = std::async(std::launch::async, [&]() {
+    return harness.renderer().DestroyUploadedScene(sceneHandle);
+  });
+  CHECK(destroyFuture.wait_for(std::chrono::milliseconds(25)) == std::future_status::timeout);
+  REQUIRE(harness.SignalFenceOnly().ok);
+  REQUIRE(destroyFuture.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  CHECK(destroyFuture.get().ok);
+}
+
+TEST_CASE("Renderer reset refuses outstanding mutation tokens and recovers after end") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  SceneMutationToken token{};
+  REQUIRE(harness.renderer().BeginSceneMutation(sceneHandle, token).ok);
+  SceneAccessInfo accessInfo{};
+  REQUIRE(harness.renderer().GetSceneAccessInfo(sceneHandle, accessInfo).ok);
+  CHECK(accessInfo.mutationActive);
+  CHECK_FALSE(harness.renderer().Reset().ok);
+  REQUIRE(harness.renderer().EndSceneMutation(token).ok);
+  CHECK(harness.renderer().Reset().ok);
+}
+
+TEST_CASE("Renderer uploads and exposes every VRAM format combination") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  const std::array<VramAttributeFormat, 3> formats{
+      VramAttributeFormat::Float32,
+      VramAttributeFormat::Float16,
+      VramAttributeFormat::Uint8,
+  };
+
+  for (VramAttributeFormat rgbaFormat : formats) {
+    for (VramAttributeFormat shFormat : formats) {
+      Scene scene = MakeTinyScene();
+      scene.vramFormat = {rgbaFormat, shFormat};
+      UploadedSceneHandle sceneHandle{};
+      REQUIRE(harness.renderer().CreateUploadedScene(scene, sceneHandle).ok);
+      RenderPreparationResult preparation{};
+      const RenderInput input = MakeRenderInput(48, 48);
+      const RenderFrameContext frameContext = harness.FrameContext();
+      REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+      UploadedSceneGpuResources resources{};
+      REQUIRE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
+      CHECK(resources.vramFormat.rgbaFormat == rgbaFormat);
+      CHECK(resources.vramFormat.shFormat == shFormat);
+      CHECK(resources.packedStrideBytes == EstimatePackedGaussianStrideBytes(scene.vramFormat));
+      CHECK(resources.sceneGaussians.strideBytes == resources.packedStrideBytes);
+      REQUIRE(harness.SignalFenceOnly().ok);
+      REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+    }
+  }
+}
+
+TEST_CASE("Renderer renders every VRAM format combination") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  const std::array<VramAttributeFormat, 3> formats{
+      VramAttributeFormat::Float32,
+      VramAttributeFormat::Float16,
+      VramAttributeFormat::Uint8,
+  };
+
+  for (VramAttributeFormat rgbaFormat : formats) {
+    for (VramAttributeFormat shFormat : formats) {
+      Scene scene = MakeTinyScene();
+      scene.vramFormat = {rgbaFormat, shFormat};
+      UploadedSceneHandle sceneHandle{};
+      REQUIRE(harness.renderer().CreateUploadedScene(scene, sceneHandle).ok);
+      RenderPreparationResult preparation{};
+      RenderResult renderResult{};
+      const RenderInput input = MakeRenderInput(64, 64);
+      const RenderFrameContext frameContext = harness.FrameContext();
+      REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+      OffscreenFrame frame{};
+      REQUIRE(harness.CreateOffscreenFrame(64, 64, frame).ok);
+      REQUIRE(harness.ResetCommandList().ok);
+      REQUIRE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+      harness.QueueColorReadback(frame);
+      REQUIRE(harness.ExecuteAndWait(renderResult.submission.uploadSyncPoint).ok);
+      const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+      REQUIRE_FALSE(pixels.empty());
+      CHECK(CountNonZeroPixels(pixels) > 0u);
+      REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+    }
+  }
+}
+
+TEST_CASE("Renderer final render path works") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+
+  RenderPreparationResult preparation{};
+  RenderResult renderResult{};
+  RenderInput input = MakeRenderInput(96, 96);
+  input.settings.maxAxisPixels = 512.0f;
+  const RenderFrameContext frameContext = harness.FrameContext();
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  OffscreenFrame frame{};
+  REQUIRE(harness.CreateOffscreenFrame(96, 96, frame).ok);
+  REQUIRE(harness.ResetCommandList().ok);
+  REQUIRE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+  harness.QueueColorReadback(frame);
+  REQUIRE(harness.ExecuteAndWait(renderResult.submission.uploadSyncPoint).ok);
+  const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+  REQUIRE_FALSE(pixels.empty());
+  CHECK(CountNonZeroPixels(pixels) > 0u);
+
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+}
+
+TEST_CASE("Renderer survives repeated upload update render and reset cycles") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  std::vector<UploadedChunkHandle> chunks;
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeSceneWithColor(-0.15f, 1.0f, 0.1f, 0.1f), sceneHandle, &chunks).ok);
+  REQUIRE(chunks.size() == 1u);
+
+  for (uint32_t i = 0; i < 10u; ++i) {
+    const float t = static_cast<float>(i) / 9.0f;
+    Scene replacement = MakeSceneWithColor(-0.2f + t * 0.4f, 0.1f + t * 0.8f, 0.8f - t * 0.5f, 0.2f + t * 0.6f);
+    REQUIRE(harness.renderer().UpdateUploadedChunk(sceneHandle, chunks.front(), replacement.splatSets.front()).ok);
+    if ((i % 3u) == 1u) {
+      UploadedChunkHandle extra{};
+      REQUIRE(harness.renderer().AddUploadedChunk(sceneHandle, MakeSceneWithColor(0.25f, 0.1f, 0.5f, 1.0f).splatSets.front(), extra).ok);
+      REQUIRE(harness.renderer().RemoveUploadedChunk(sceneHandle, extra).ok);
+    }
+
+    RenderPreparationResult preparation{};
+    RenderResult renderResult{};
+    const RenderInput input = MakeRenderInput(72, 72);
+    const RenderFrameContext frameContext = harness.FrameContext();
+    REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+    OffscreenFrame frame{};
+    REQUIRE(harness.CreateOffscreenFrame(72, 72, frame).ok);
+    REQUIRE(harness.ResetCommandList().ok);
+    REQUIRE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+    harness.QueueColorReadback(frame);
+    REQUIRE(harness.ExecuteAndWait(renderResult.submission.uploadSyncPoint).ok);
+    const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+    REQUIRE_FALSE(pixels.empty());
+    CHECK(CountNonZeroPixels(pixels) > 0u);
+  }
+
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+  CHECK(harness.renderer().Reset().ok);
+}
+
+TEST_CASE("Renderer finalizes managed target state on dirty late render errors") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  RenderPreparationResult preparation{};
+  const RenderInput input = MakeRenderInput(64, 64);
+  const RenderFrameContext frameContext = harness.FrameContext();
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  OffscreenFrame frame{};
+  REQUIRE(harness.CreateOffscreenFrame(64, 64, frame).ok);
+  REQUIRE(harness.ResetCommandList().ok);
+
+  RenderHooks hooks{};
+  hooks.afterRaster = [](const RenderHookContext&) { throw std::runtime_error("forced late render hook failure"); };
+  AdvancedRenderOptions options{};
+  options.hooks = &hooks;
+  RenderResult result{};
+  const Status rendered = harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, options, frameContext, result);
+  CHECK_FALSE(rendered.ok);
+  CHECK(result.submission.submissionRequired);
+  harness.QueueColorReadback(frame);
+  REQUIRE(harness.ExecuteAndWait(result.submission.uploadSyncPoint).ok);
+  const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+  REQUIRE_FALSE(pixels.empty());
+  CHECK_MESSAGE(harness.DeviceRemovedReason() == S_OK, harness.DebugMessages());
+}
+
+TEST_CASE("Renderer initializes, uploads a tiny scene, and renders offscreen") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  std::vector<UploadedChunkHandle> chunkHandles;
+  const Scene scene = MakeTinyScene();
+  REQUIRE(harness.renderer().CreateUploadedScene(scene, sceneHandle, &chunkHandles).ok);
+  REQUIRE(sceneHandle.IsValid());
+  CHECK(chunkHandles.size() == 1u);
+
+  RenderPreparationResult preparation{};
+  RenderResult renderResult{};
+  const RenderInput input = MakeRenderInput(128, 128);
+  const RenderFrameContext frameContext = harness.FrameContext();
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+  OffscreenFrame frame{};
+  REQUIRE(harness.CreateOffscreenFrame(128, 128, frame).ok);
+  REQUIRE(harness.ResetCommandList().ok);
+  REQUIRE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+  harness.QueueColorReadback(frame);
+  REQUIRE(harness.ExecuteAndWait(renderResult.submission.uploadSyncPoint).ok);
+  CHECK_MESSAGE(harness.DeviceRemovedReason() == S_OK, harness.DebugMessages());
+
+  const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+  REQUIRE_FALSE(pixels.empty());
+  CHECK(CountNonZeroPixels(pixels) > 0u);
+}
+
+}  // namespace dxsplat
