@@ -283,6 +283,24 @@ TEST_CASE("raw PLY writer roundtrips through raw and scene loaders") {
   std::filesystem::remove_all(dir, ec);
 }
 
+TEST_CASE("raw PLY reader rejects scalar storage above fallback budget") {
+  const std::filesystem::path dir = MakeTempDir("directxsplat_raw_ply_budget");
+  const std::filesystem::path path = dir / "huge_scalar_budget.ply";
+  WriteText(path,
+            "ply\n"
+            "format ascii 1.0\n"
+            "element vertex 33554433\n"
+            "property float x\n"
+            "end_header\n");
+
+  auto raw = io::ply::ReadPlyFile(path.string());
+  CHECK_FALSE(raw.ok());
+  CHECK(raw.status.message.find("configured loader limits") != std::string::npos);
+
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+}
+
 TEST_CASE("SOG metadata schema variants fail through StatusOr instead of exceptions") {
   const std::filesystem::path dir = MakeTempDir("directxsplat_sog_schema_matrix");
 

@@ -18,8 +18,8 @@ namespace {
 
 constexpr uint32_t kMaxPlyElements = 4096;
 constexpr uint32_t kMaxPlyProperties = 4096;
-constexpr uint64_t kMaxPlyFileBytes = 8ull * 1024ull * 1024ull * 1024ull;
-constexpr uint64_t kMaxPlyScalarBytes = 16ull * 1024ull * 1024ull * 1024ull;
+constexpr uint64_t kMaxPlyFileBytes = 256ull * 1024ull * 1024ull;
+constexpr uint64_t kMaxPlyScalarBytes = 256ull * 1024ull * 1024ull;
 constexpr size_t kMaxPlyHeaderLineBytes = 1024ull * 1024ull;
 constexpr size_t kMaxAsciiPlyTokenBytes = 4096;
 
@@ -563,4 +563,3 @@ int FindScalarProperty(const PlyElement& element, const std::string& name) {
 }
 
 }
-

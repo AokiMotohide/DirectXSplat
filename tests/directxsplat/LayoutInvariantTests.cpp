@@ -98,4 +98,14 @@ TEST_CASE("Renderer residency cache keys include view-space depth convention") {
   CHECK(renderer.find("HashBytes(&input.settings.positiveViewSpaceZ") != std::string::npos);
 }
 
+TEST_CASE("raw PLY fallback budgets stay bounded") {
+  const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
+  const std::string reader =
+      ReadTextFile(root / "directxsplat" / "src" / "io" / "formats" / "ply" / "raw" / "ply_reader.cpp");
+
+  REQUIRE_FALSE(reader.empty());
+  CHECK(reader.find("kMaxPlyFileBytes = 256ull * 1024ull * 1024ull") != std::string::npos);
+  CHECK(reader.find("kMaxPlyScalarBytes = 256ull * 1024ull * 1024ull") != std::string::npos);
+}
+
 }  // namespace dxsplat
