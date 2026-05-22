@@ -272,6 +272,7 @@ Status GaussianRasterPipeline::Initialize(ID3D12Device* device,
   uploadFenceValue_ = 0;
   uint64_t timestampFrequency = 0;
   if (FAILED(queue_->GetTimestampFrequency(&timestampFrequency)) || timestampFrequency == 0) {
+    ShutdownInternal(true);
     return Status::Error("failed querying timestamp frequency");
   }
   gpuTimestampMsPerTick_ = 1000.0 / static_cast<double>(timestampFrequency);
