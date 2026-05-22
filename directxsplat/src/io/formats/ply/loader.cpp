@@ -20,6 +20,9 @@ namespace dxsplat::io {
 
 namespace {
 
+constexpr uint32_t kMaxFastPlyElementRows = 64u * 1024u * 1024u;
+constexpr uint32_t kMaxFastPlyChunkRows = 4u * 1024u * 1024u;
+
 float DecodeLogScaleValue(float raw) {
   if (!std::isfinite(raw)) {
     return 1e-4f;
@@ -586,6 +589,97 @@ StatusOr<FastPlyHeader> ReadFastPlyHeader(std::ifstream& file) {
   return StatusOr<FastPlyHeader>::Ok(std::move(header));
 }
 
+StatusOr<uint64_t> StreamPosBytes(std::streampos pos) {
+  if (pos == std::streampos(-1)) {
+    return StatusOr<uint64_t>::Error("invalid ply body");
+  }
+  const std::streamoff offset = static_cast<std::streamoff>(pos);
+  if (offset < 0) {
+    return StatusOr<uint64_t>::Error("invalid ply body");
+  }
+  return StatusOr<uint64_t>::Ok(static_cast<uint64_t>(offset));
+}
+
+StatusOr<uint64_t> FastPlyFileSize(std::ifstream& file) {
+  const std::streampos current = file.tellg();
+  const auto currentBytes = StreamPosBytes(current);
+  if (!currentBytes.ok()) {
+    return currentBytes;
+  }
+  file.seekg(0, std::ios::end);
+  if (!file) {
+    return StatusOr<uint64_t>::Error("invalid ply body");
+  }
+  const auto endBytes = StreamPosBytes(file.tellg());
+  file.seekg(current);
+  if (!file) {
+    return StatusOr<uint64_t>::Error("invalid ply body");
+  }
+  return endBytes;
+}
+
+Status ValidateFastPlyCounts(const FastPlyHeader& header) {
+  for (const ply::PlyElement& element : header.elements) {
+    if (element.count > kMaxFastPlyElementRows) {
+      return Status::Error("ply element count too large");
+    }
+    if (element.name == "chunk" && element.count > kMaxFastPlyChunkRows) {
+      return Status::Error("ply element count too large");
+    }
+  }
+  return Status::Ok();
+}
+
+StatusOr<uint64_t> FastPlyMinimumRowBytes(const ply::PlyElement& element) {
+  uint64_t rowBytes = 0;
+  for (const ply::PlyProperty& prop : element.properties) {
+    const ply::PlyScalarType type = prop.isList ? prop.listCountType : prop.type;
+    const uint64_t size = static_cast<uint64_t>(ply::ScalarTypeSize(type));
+    if (size == 0) {
+      return StatusOr<uint64_t>::Error("unsupported scalar type");
+    }
+    if (rowBytes > std::numeric_limits<uint64_t>::max() - size) {
+      return StatusOr<uint64_t>::Error("ply body is too large");
+    }
+    rowBytes += size;
+  }
+  return StatusOr<uint64_t>::Ok(rowBytes);
+}
+
+Status ValidateFastPlyBodyFootprint(const FastPlyHeader& header, uint64_t fileSize) {
+  Status countStatus = ValidateFastPlyCounts(header);
+  if (!countStatus.ok) {
+    return countStatus;
+  }
+  const auto bodyOffset = StreamPosBytes(header.bodyOffset);
+  if (!bodyOffset.ok()) {
+    return Status::Error(bodyOffset.status.message);
+  }
+  if (bodyOffset.value > fileSize) {
+    return Status::Error("invalid ply body");
+  }
+  const uint64_t remainingBytes = fileSize - bodyOffset.value;
+  uint64_t requiredBytes = 0;
+  for (const ply::PlyElement& element : header.elements) {
+    const auto rowBytes = FastPlyMinimumRowBytes(element);
+    if (!rowBytes.ok()) {
+      return Status::Error(rowBytes.status.message);
+    }
+    if (rowBytes.value != 0 && element.count > std::numeric_limits<uint64_t>::max() / rowBytes.value) {
+      return Status::Error("ply body is too large");
+    }
+    const uint64_t elementBytes = rowBytes.value * static_cast<uint64_t>(element.count);
+    if (requiredBytes > std::numeric_limits<uint64_t>::max() - elementBytes) {
+      return Status::Error("ply body is too large");
+    }
+    requiredBytes += elementBytes;
+    if (requiredBytes > remainingBytes) {
+      return Status::Error("invalid ply body");
+    }
+  }
+  return Status::Ok();
+}
+
 template <typename T>
 StatusOr<T> ReadPod(std::istream& file) {
   T value{};
@@ -1072,6 +1166,14 @@ StatusOr<PlyLoadResult> TryLoadBinaryPlyFast(const std::string& path, const std:
   }
   if (header.value.format != ply::PlyFormat::BinaryLittleEndian) {
     return StatusOr<PlyLoadResult>::Error("unsupported fast ply path");
+  }
+  const auto fileSize = FastPlyFileSize(file);
+  if (!fileSize.ok()) {
+    return StatusOr<PlyLoadResult>::Error(fileSize.status.message);
+  }
+  Status bodyStatus = ValidateFastPlyBodyFootprint(header.value, fileSize.value);
+  if (!bodyStatus.ok) {
+    return StatusOr<PlyLoadResult>::Error(bodyStatus.message);
   }
   file.seekg(header.value.bodyOffset);
   if (!file) {

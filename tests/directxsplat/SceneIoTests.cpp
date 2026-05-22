@@ -175,6 +175,57 @@ TEST_CASE("Scene IO rejects malformed and hostile PLY inputs") {
   loaded = LoadSceneFromFile(truncatedBinary.string());
   CHECK_FALSE(loaded.ok());
 
+  const std::filesystem::path fastHugeVertex = dir / "fast_huge_vertex_binary.ply";
+  WriteFile(fastHugeVertex,
+            "ply\n"
+            "format binary_little_endian 1.0\n"
+            "element vertex 67108865\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "property float scale_x\n"
+            "property float scale_y\n"
+            "property float scale_z\n"
+            "property float rot_0\n"
+            "property float rot_1\n"
+            "property float rot_2\n"
+            "property float rot_3\n"
+            "property float opacity\n"
+            "property uchar red\n"
+            "property uchar green\n"
+            "property uchar blue\n"
+            "end_header\n");
+  loaded = LoadSceneFromFile(fastHugeVertex.string());
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "ply element count too large");
+
+  const std::filesystem::path fastHugeChunk = dir / "fast_huge_chunk_binary.ply";
+  WriteFile(fastHugeChunk,
+            "ply\n"
+            "format binary_little_endian 1.0\n"
+            "element chunk 4194305\n"
+            "property float min_x\n"
+            "property float min_y\n"
+            "property float min_z\n"
+            "property float max_x\n"
+            "property float max_y\n"
+            "property float max_z\n"
+            "property float min_scale_x\n"
+            "property float min_scale_y\n"
+            "property float min_scale_z\n"
+            "property float max_scale_x\n"
+            "property float max_scale_y\n"
+            "property float max_scale_z\n"
+            "element vertex 1\n"
+            "property uint packed_position\n"
+            "property uint packed_rotation\n"
+            "property uint packed_scale\n"
+            "property uint packed_color\n"
+            "end_header\n");
+  loaded = LoadSceneFromFile(fastHugeChunk.string());
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "ply element count too large");
+
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
 }
