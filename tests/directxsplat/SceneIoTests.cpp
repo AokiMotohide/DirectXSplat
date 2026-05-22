@@ -4,6 +4,7 @@
 #include <chrono>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <thread>
@@ -339,6 +340,19 @@ TEST_CASE("Scene IO rejects malformed SPZ and SPLAT inputs") {
   WriteFile(splat, std::string(31, '\0'));
   loaded = LoadSceneFromFile(splat.string());
   CHECK_FALSE(loaded.ok());
+
+  const std::filesystem::path hugeSplat = dir / "huge_expanded.splat";
+  {
+    std::ofstream file(hugeSplat, std::ios::binary);
+  }
+  constexpr uint64_t splatExpandedBudget = 2ull * 1024ull * 1024ull * 1024ull;
+  constexpr uint64_t hugeSplatBytes = ((splatExpandedBudget / sizeof(Gaussian)) + 1ull) * 32ull;
+  std::error_code resizeError;
+  std::filesystem::resize_file(hugeSplat, hugeSplatBytes, resizeError);
+  REQUIRE_FALSE(resizeError);
+  loaded = LoadSceneFromFile(hugeSplat.string());
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "splat file is too large");
 
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);

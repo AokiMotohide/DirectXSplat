@@ -16,7 +16,11 @@ namespace dxsplat::io {
 namespace {
 
 constexpr size_t kSplatRecordBytes = 32;
-constexpr size_t kMaxSplatGaussians = 32ull * 1024ull * 1024ull;
+constexpr size_t kMaxSplatInputGaussians = 32ull * 1024ull * 1024ull;
+constexpr uint64_t kMaxSplatExpandedBytes = 2ull * 1024ull * 1024ull * 1024ull;
+constexpr size_t kMaxSplatExpandedGaussians = static_cast<size_t>(kMaxSplatExpandedBytes / sizeof(Gaussian));
+constexpr size_t kMaxSplatGaussians =
+    kMaxSplatExpandedGaussians < kMaxSplatInputGaussians ? kMaxSplatExpandedGaussians : kMaxSplatInputGaussians;
 constexpr size_t kMaxSplatBytes = kMaxSplatGaussians * kSplatRecordBytes;
 constexpr float kShC0 = 0.28209479177387814f;
 
@@ -69,6 +73,21 @@ float SigmoidInv(float y) {
   return std::log(e / (1.0f - e));
 }
 
+Aabb ComputeGaussianBounds(const std::vector<Gaussian>& gaussians) {
+  Aabb out{};
+  if (gaussians.empty()) {
+    return out;
+  }
+  out.min = gaussians[0].position;
+  out.max = gaussians[0].position;
+  out.valid = true;
+  for (const Gaussian& g : gaussians) {
+    out.min = Min(out.min, g.position);
+    out.max = Max(out.max, g.position);
+  }
+  return out;
+}
+
 }
 
 StatusOr<GaussianSet> SplatLoader::Load(const std::string& path, const std::string& setName) const try {
@@ -92,8 +111,6 @@ StatusOr<GaussianSet> SplatLoader::Load(const std::string& path, const std::stri
   GaussianSet set{};
   set.name = setName;
   set.gaussians.reserve(count);
-  std::vector<Vec3> points;
-  points.reserve(count);
 
   for (size_t i = 0; i < count; ++i) {
     const uint8_t* row = file.value.data() + i * kSplatRecordBytes;
@@ -127,14 +144,13 @@ StatusOr<GaussianSet> SplatLoader::Load(const std::string& path, const std::stri
       continue;
     }
     set.gaussians.push_back(g);
-    points.push_back(g.position);
   }
 
   if (set.gaussians.empty()) {
     return StatusOr<GaussianSet>::Error("no valid gaussians found");
   }
 
-  set.bounds = ComputeAabb(points);
+  set.bounds = ComputeGaussianBounds(set.gaussians);
   return StatusOr<GaussianSet>::Ok(std::move(set));
 } catch (const std::bad_alloc&) {
   return StatusOr<GaussianSet>::Error("splat scene allocation failed");
