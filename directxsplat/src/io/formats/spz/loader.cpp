@@ -23,6 +23,7 @@ constexpr uint32_t kMaxSpzVersion = 4;
 constexpr uint32_t kMaxSpzPoints = 10000000;
 constexpr size_t kMaxSpzCompressedBytes = 512ull * 1024ull * 1024ull;
 constexpr size_t kMaxSpzDecompressedBytes = 1024ull * 1024ull * 1024ull;
+constexpr uint64_t kMaxSpzExpandedBytes = 2ull * 1024ull * 1024ull * 1024ull;
 constexpr float kSpzColorScale = 0.15f;
 constexpr float kSqrtHalf = 0.7071067811865476f;
 
@@ -230,6 +231,29 @@ float DecodeQuantizedSh(uint8_t v) {
   return (static_cast<float>(v) - 128.0f) / 128.0f;
 }
 
+Status ValidateSpzGaussianStorage(uint32_t count) {
+  constexpr uint64_t stride = sizeof(Gaussian) + sizeof(Vec3);
+  if (static_cast<uint64_t>(count) > kMaxSpzExpandedBytes / stride) {
+    return Status::Error("spz scene is too large");
+  }
+  return Status::Ok();
+}
+
+Aabb ComputeGaussianBounds(const std::vector<Gaussian>& gaussians) {
+  Aabb out{};
+  if (gaussians.empty()) {
+    return out;
+  }
+  out.min = gaussians[0].position;
+  out.max = gaussians[0].position;
+  out.valid = true;
+  for (const Gaussian& g : gaussians) {
+    out.min = Min(out.min, g.position);
+    out.max = Max(out.max, g.position);
+  }
+  return out;
+}
+
 int32_t DecodeSigned24(const uint8_t* p) {
   int32_t value = static_cast<int32_t>(p[0]) | (static_cast<int32_t>(p[1]) << 8) |
                   (static_cast<int32_t>(p[2]) << 16);
@@ -290,6 +314,10 @@ Status ValidatePayloadLayout(size_t dataSize, uint32_t count, uint32_t version, 
   }
   if (count > kMaxSpzPoints) {
     return Status::Error("spz scene has too many splats");
+  }
+  Status storageStatus = ValidateSpzGaussianStorage(count);
+  if (!storageStatus.ok) {
+    return storageStatus;
   }
   if (version < 1 || version > kMaxSpzVersion) {
     return Status::Error("unsupported spz version");
@@ -375,8 +403,6 @@ StatusOr<GaussianSet> SpzLoader::Load(const std::string& path, const std::string
   GaussianSet set{};
   set.name = setName;
   set.gaussians.reserve(n);
-  std::vector<Vec3> points;
-  points.reserve(n);
   const auto shFlip = SpzToRdfShFlip();
 
   for (uint32_t i = 0; i < count; ++i) {
@@ -412,14 +438,13 @@ StatusOr<GaussianSet> SpzLoader::Load(const std::string& path, const std::string
       continue;
     }
     set.gaussians.push_back(g);
-    points.push_back(g.position);
   }
 
   if (set.gaussians.empty()) {
     return StatusOr<GaussianSet>::Error("no valid gaussians found");
   }
 
-  set.bounds = ComputeAabb(points);
+  set.bounds = ComputeGaussianBounds(set.gaussians);
   return StatusOr<GaussianSet>::Ok(std::move(set));
 } catch (const std::bad_alloc&) {
   return StatusOr<GaussianSet>::Error("spz scene allocation failed");

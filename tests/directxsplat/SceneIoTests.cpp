@@ -326,6 +326,15 @@ TEST_CASE("Scene IO rejects malformed SPZ and SPLAT inputs") {
   auto loaded = LoadSceneFromFile(spz.string());
   CHECK_FALSE(loaded.ok());
 
+  const std::filesystem::path hugeSpz = dir / "huge_expanded.spz";
+  const unsigned char hugeSpzData[] = {0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0xf3,
+                                       0x73, 0x0f, 0x0e, 0x60, 0x64, 0x60, 0x60, 0x68, 0x98, 0x36, 0x83,
+                                       0x01, 0x04, 0x00, 0xc9, 0xf8, 0xee, 0x54, 0x10, 0x00, 0x00, 0x00};
+  WriteFile(hugeSpz, std::string(reinterpret_cast<const char*>(hugeSpzData), sizeof(hugeSpzData)));
+  loaded = LoadSceneFromFile(hugeSpz.string());
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "spz scene is too large");
+
   const std::filesystem::path splat = dir / "bad.splat";
   WriteFile(splat, std::string(31, '\0'));
   loaded = LoadSceneFromFile(splat.string());
