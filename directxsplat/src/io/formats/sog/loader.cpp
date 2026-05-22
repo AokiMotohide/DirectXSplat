@@ -27,6 +27,7 @@ namespace fs = ghc::filesystem;
 namespace {
 
 constexpr uint32_t kMaxSogGaussians = 10u * 1024u * 1024u;
+constexpr uint64_t kMaxSogExpandedBytes = 2ull * 1024ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxSogAssetBytes = 512ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxSogTotalAssetBytes = 1024ull * 1024ull * 1024ull;
 
@@ -70,6 +71,29 @@ StatusOr<std::vector<uint8_t>> ReadFileBytes(const fs::path& path) {
 }
 
 float Lerp(float a, float b, float t) { return a * (1.0f - t) + b * t; }
+
+Status ValidateSogGaussianStorage(uint32_t count) {
+  constexpr uint64_t stride = sizeof(Gaussian) + sizeof(Vec3);
+  if (static_cast<uint64_t>(count) > kMaxSogExpandedBytes / stride) {
+    return Status::Error("sog scene is too large");
+  }
+  return Status::Ok();
+}
+
+Aabb ComputeGaussianBounds(const std::vector<Gaussian>& gaussians) {
+  Aabb out{};
+  if (gaussians.empty()) {
+    return out;
+  }
+  out.min = gaussians[0].position;
+  out.max = gaussians[0].position;
+  out.valid = true;
+  for (const Gaussian& g : gaussians) {
+    out.min = Min(out.min, g.position);
+    out.max = Max(out.max, g.position);
+  }
+  return out;
+}
 
 float InverseSymmetricLog(float v) {
   const float a = std::abs(v);
@@ -310,69 +334,81 @@ StatusOr<GaussianSet> SogLoader::Load(const std::string& path, const std::string
   if (count > kMaxSogGaussians) {
     return StatusOr<GaussianSet>::Error("sog scene has too many splats");
   }
+  Status storageStatus = ValidateSogGaussianStorage(count);
+  if (!storageStatus.ok) {
+    return StatusOr<GaussianSet>::Error(storageStatus.message);
+  }
 
   GaussianSet set{};
   set.name = setName;
 
   {
-    const auto& meansJson = meta.at("means");
-    const auto& meansFiles = meansJson.at("files");
-    if (!meansFiles.is_array() || meansFiles.size() < 2) {
-      return StatusOr<GaussianSet>::Error("invalid sog means files");
-    }
-    DecodedImage meansL;
+    std::vector<Vec3> positions;
     {
-      const auto meansLBytes = loadAsset(meansFiles.at(0).get<std::string>());
-      if (!meansLBytes.ok()) {
-        return StatusOr<GaussianSet>::Error("failed to read sog means");
+      const auto& meansJson = meta.at("means");
+      const auto& meansFiles = meansJson.at("files");
+      if (!meansFiles.is_array() || meansFiles.size() < 2) {
+        return StatusOr<GaussianSet>::Error("invalid sog means files");
       }
-      auto decoded = DecodeImageFromMemoryWic(meansLBytes.value);
-      if (!decoded.ok()) {
-        return StatusOr<GaussianSet>::Error("failed to decode sog means images");
+      DecodedImage meansL;
+      {
+        const auto meansLBytes = loadAsset(meansFiles.at(0).get<std::string>());
+        if (!meansLBytes.ok()) {
+          return StatusOr<GaussianSet>::Error("failed to read sog means");
+        }
+        auto decoded = DecodeImageFromMemoryWic(meansLBytes.value);
+        if (!decoded.ok()) {
+          return StatusOr<GaussianSet>::Error("failed to decode sog means images");
+        }
+        meansL = std::move(decoded.value);
       }
-      meansL = std::move(decoded.value);
-    }
-    DecodedImage meansU;
-    {
-      const auto meansUBytes = loadAsset(meansFiles.at(1).get<std::string>());
-      if (!meansUBytes.ok()) {
-        return StatusOr<GaussianSet>::Error("failed to read sog means");
+      DecodedImage meansU;
+      {
+        const auto meansUBytes = loadAsset(meansFiles.at(1).get<std::string>());
+        if (!meansUBytes.ok()) {
+          return StatusOr<GaussianSet>::Error("failed to read sog means");
+        }
+        auto decoded = DecodeImageFromMemoryWic(meansUBytes.value);
+        if (!decoded.ok()) {
+          return StatusOr<GaussianSet>::Error("failed to decode sog means images");
+        }
+        meansU = std::move(decoded.value);
       }
-      auto decoded = DecodeImageFromMemoryWic(meansUBytes.value);
-      if (!decoded.ok()) {
-        return StatusOr<GaussianSet>::Error("failed to decode sog means images");
+      if (meansL.width != meansU.width || meansL.height != meansU.height) {
+        return StatusOr<GaussianSet>::Error("sog means image dimensions mismatch");
       }
-      meansU = std::move(decoded.value);
+      if (!HasImagePixels(meansL, count) || !HasImagePixels(meansU, count)) {
+        return StatusOr<GaussianSet>::Error("sog means image too small");
+      }
+
+      std::array<float, 3> mins{};
+      std::array<float, 3> maxs{};
+      for (uint32_t i = 0; i < 3; ++i) {
+        mins[i] = meansJson.at("mins").at(i).get<float>();
+        maxs[i] = meansJson.at("maxs").at(i).get<float>();
+      }
+
+      positions.resize(count);
+      for (uint32_t i = 0; i < count; ++i) {
+        const size_t o = static_cast<size_t>(i) * 4;
+        const uint16_t qx = static_cast<uint16_t>(meansL.rgba[o + 0]) |
+                            static_cast<uint16_t>(static_cast<uint16_t>(meansU.rgba[o + 0]) << 8);
+        const uint16_t qy = static_cast<uint16_t>(meansL.rgba[o + 1]) |
+                            static_cast<uint16_t>(static_cast<uint16_t>(meansU.rgba[o + 1]) << 8);
+        const uint16_t qz = static_cast<uint16_t>(meansL.rgba[o + 2]) |
+                            static_cast<uint16_t>(static_cast<uint16_t>(meansU.rgba[o + 2]) << 8);
+
+        const float nx = Lerp(mins[0], maxs[0], static_cast<float>(qx) / 65535.0f);
+        const float ny = Lerp(mins[1], maxs[1], static_cast<float>(qy) / 65535.0f);
+        const float nz = Lerp(mins[2], maxs[2], static_cast<float>(qz) / 65535.0f);
+
+        positions[i] = {InverseSymmetricLog(nx), InverseSymmetricLog(ny), InverseSymmetricLog(nz)};
+      }
     }
-    if (meansL.width != meansU.width || meansL.height != meansU.height) {
-      return StatusOr<GaussianSet>::Error("sog means image dimensions mismatch");
-    }
-    if (!HasImagePixels(meansL, count) || !HasImagePixels(meansU, count)) {
-      return StatusOr<GaussianSet>::Error("sog means image too small");
-    }
+
     set.gaussians.resize(count);
-
-    std::array<float, 3> mins{};
-    std::array<float, 3> maxs{};
-    for (uint32_t i = 0; i < 3; ++i) {
-      mins[i] = meansJson.at("mins").at(i).get<float>();
-      maxs[i] = meansJson.at("maxs").at(i).get<float>();
-    }
-
     for (uint32_t i = 0; i < count; ++i) {
-      const size_t o = static_cast<size_t>(i) * 4;
-      const uint16_t qx = static_cast<uint16_t>(meansL.rgba[o + 0]) |
-                          static_cast<uint16_t>(static_cast<uint16_t>(meansU.rgba[o + 0]) << 8);
-      const uint16_t qy = static_cast<uint16_t>(meansL.rgba[o + 1]) |
-                          static_cast<uint16_t>(static_cast<uint16_t>(meansU.rgba[o + 1]) << 8);
-      const uint16_t qz = static_cast<uint16_t>(meansL.rgba[o + 2]) |
-                          static_cast<uint16_t>(static_cast<uint16_t>(meansU.rgba[o + 2]) << 8);
-
-      const float nx = Lerp(mins[0], maxs[0], static_cast<float>(qx) / 65535.0f);
-      const float ny = Lerp(mins[1], maxs[1], static_cast<float>(qy) / 65535.0f);
-      const float nz = Lerp(mins[2], maxs[2], static_cast<float>(qz) / 65535.0f);
-
-      set.gaussians[i].position = {InverseSymmetricLog(nx), InverseSymmetricLog(ny), InverseSymmetricLog(nz)};
+      set.gaussians[i].position = positions[i];
       set.gaussians[i].splatId = i;
     }
   }
@@ -542,12 +578,7 @@ StatusOr<GaussianSet> SogLoader::Load(const std::string& path, const std::string
     }
   }
 
-  std::vector<Vec3> points;
-  points.reserve(set.gaussians.size());
-  for (const auto& g : set.gaussians) {
-    points.push_back(g.position);
-  }
-  set.bounds = ComputeAabb(points);
+  set.bounds = ComputeGaussianBounds(set.gaussians);
 
   return StatusOr<GaussianSet>::Ok(std::move(set));
 } catch (const nlohmann::json::exception&) {

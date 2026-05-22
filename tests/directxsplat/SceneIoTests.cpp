@@ -307,6 +307,7 @@ TEST_CASE("Scene IO rejects hostile SOG and LOD metadata paths") {
   WriteFile(hugeSogDir / "meta.json", "{\"count\":10000001}");
   loaded = LoadSceneFromFile((hugeSogDir / "meta.json").string());
   CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "sog scene is too large");
 
   const std::filesystem::path badZip = dir / "bad.sog";
   WriteFile(badZip, "not a zip");
