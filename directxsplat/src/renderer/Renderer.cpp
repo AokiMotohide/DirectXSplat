@@ -1003,9 +1003,15 @@ class Renderer::Impl {
       return Status::Ok();
     }
     std::vector<std::shared_ptr<ResidencyInstanceRecord>> instances;
-    {
-      std::lock_guard<std::mutex> sceneLock(record->mutex);
-      instances = record->instances;
+    try {
+      {
+        std::lock_guard<std::mutex> sceneLock(record->mutex);
+        instances = record->instances;
+      }
+    } catch (const std::bad_alloc&) {
+      return Status::Error("scene residency allocation failed");
+    } catch (const std::length_error&) {
+      return Status::Error("scene residency allocation failed");
     }
     for (const std::shared_ptr<ResidencyInstanceRecord>& instance : instances) {
       Status idle = WaitResidencyInstanceGpuIdle(instance);
