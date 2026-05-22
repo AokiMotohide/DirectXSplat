@@ -630,6 +630,8 @@ TEST_CASE("Renderer rejects stale frame contexts") {
   RenderFrameContext stale = harness.FrameContext();
   REQUIRE(harness.SignalFenceOnly().ok);
   stale.completedFenceValue = stale.submissionFenceValue;
+  RenderPreparationResult preparation{};
+  CHECK_FALSE(harness.renderer().PrepareSceneForRender(sceneHandle, input, stale, &preparation).ok);
   RenderResult renderResult{};
   CHECK_FALSE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, stale, renderResult).ok);
 }

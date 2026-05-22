@@ -891,14 +891,30 @@ class Renderer::Impl {
   }
 
   uint64_t CompletedFenceValue(const RenderFrameContext* frameContext) const {
-    if (frameContext == nullptr) {
+    if (frameContext == nullptr || frameContext->fence == nullptr || submissionFence.Get() != frameContext->fence) {
       return 0;
     }
     uint64_t completed = frameContext->completedFenceValue;
-    if (frameContext->fence != nullptr) {
-      completed = std::max(completed, frameContext->fence->GetCompletedValue());
-    }
+    completed = std::max(completed, frameContext->fence->GetCompletedValue());
     return completed;
+  }
+
+  Status ValidateFrameContext(const RenderFrameContext* frameContext) const {
+    if (frameContext == nullptr || frameContext->fence == nullptr || frameContext->submissionFenceValue == 0) {
+      return Status::Error("render frame context requires a fence and submission value");
+    }
+    if (submissionFence == nullptr) {
+      return Status::Error("render frame context fence is not registered");
+    }
+    if (submissionFence.Get() != frameContext->fence) {
+      return Status::Error("render frame context fence changed");
+    }
+    const uint64_t completedFenceValue =
+        std::max(frameContext->completedFenceValue, frameContext->fence->GetCompletedValue());
+    if (frameContext->submissionFenceValue <= completedFenceValue) {
+      return Status::Error("render frame context submission value is already completed");
+    }
+    return Status::Ok();
   }
 
   bool IsFenceComplete(ID3D12Fence* fence, uint64_t value, uint64_t completedValue) const {
@@ -1169,7 +1185,11 @@ class Renderer::Impl {
       return Status::Error("invalid D3D12 device/queue");
     }
     config = SanitizeRendererConfig(rendererConfig);
+    submissionFence = context.SubmissionFence();
     Status status = raster.Initialize(context.Device(), context.CommandQueue(), context.SubmissionFence(), context.CopyQueue(), context.UploadFence(), config.enableGpuTiming);
+    if (!status.ok) {
+      submissionFence.Reset();
+    }
     initialized.store(status.ok, std::memory_order_release);
     return status;
   }
@@ -1251,6 +1271,7 @@ class Renderer::Impl {
 
   void ReleaseRendererConfig() {
     config = {};
+    submissionFence.Reset();
   }
 
   void CancelOutstandingMutations() {
@@ -2237,6 +2258,10 @@ class Renderer::Impl {
   }
 
   Status PrepareSceneForRender(UploadedSceneHandle sceneHandle, const RenderInput& input, const RenderFrameContext* frameContext, RenderPreparationResult& result) {
+    Status frameStatus = ValidateFrameContext(frameContext);
+    if (!frameStatus.ok) {
+      return frameStatus;
+    }
     RenderOp op{};
     Status access = BeginRenderAccess(sceneHandle, op);
     if (!access.ok) {
@@ -2266,13 +2291,9 @@ class Renderer::Impl {
                 RenderResult& outResult) {
     outResult = {};
     const auto cpuStart = std::chrono::steady_clock::now();
-    if (frameContext == nullptr || frameContext->fence == nullptr || frameContext->submissionFenceValue == 0) {
-      return Status::Error("render frame context requires a fence and submission value");
-    }
-    const uint64_t completedFenceValue =
-        std::max(frameContext->completedFenceValue, frameContext->fence->GetCompletedValue());
-    if (frameContext->submissionFenceValue <= completedFenceValue) {
-      return Status::Error("render frame context submission value is already completed");
+    Status frameStatus = ValidateFrameContext(frameContext);
+    if (!frameStatus.ok) {
+      return frameStatus;
     }
     RenderOp op{};
     Status s = BeginRenderAccess(sceneHandle, op);
@@ -2440,6 +2461,7 @@ class Renderer::Impl {
   std::atomic_bool deviceLost{false};
   std::atomic_bool initialized{false};
   RendererConfig config{};
+  Microsoft::WRL::ComPtr<ID3D12Fence> submissionFence;
 };
 
 Renderer::Renderer() : impl_(std::make_unique<Impl>()) {}
