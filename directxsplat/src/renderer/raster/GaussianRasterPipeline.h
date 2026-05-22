@@ -277,6 +277,9 @@ class GaussianRasterPipeline {
   void ReleaseChunkRuntime(UploadedChunkRuntime& runtime);
   Status ReleaseRenderScratchResources(RenderScratch& scratch);
   Status ReleaseSceneRuntime(UploadedSceneRuntime& runtime);
+  void ReleaseUploadContextDeviceLost(UploadContext& context);
+  void ReleaseRenderScratchResourcesDeviceLost(RenderScratch& scratch);
+  void ReleaseSceneRuntimeDeviceLost(UploadedSceneRuntime& runtime);
   Status AcquireRenderScratch(UploadedSceneRuntime& runtime,
                               uint32_t requiredPairCapacity,
                               const RenderFrameContext* frameContext,

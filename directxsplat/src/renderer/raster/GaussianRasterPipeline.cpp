@@ -336,25 +336,20 @@ Status GaussianRasterPipeline::ShutdownInternal(bool deviceLostCleanup) {
   Status shutdownStatus = Status::Ok();
 
   std::unique_lock<std::shared_mutex> scenesLock(uploadedScenesMutex_);
-  bool sceneReleaseFailed = false;
   for (auto& [id, runtime] : uploadedScenes_) {
     (void)id;
     if (runtime) {
-      Status released = ReleaseSceneRuntime(*runtime);
-      if (!released.ok) {
-        if (!deviceLostCleanup) {
+      if (deviceLostCleanup) {
+        ReleaseSceneRuntimeDeviceLost(*runtime);
+      } else {
+        Status released = ReleaseSceneRuntime(*runtime);
+        if (!released.ok) {
           return released;
         }
-        if (shutdownStatus.ok) {
-          shutdownStatus = released;
-        }
-        sceneReleaseFailed = true;
       }
     }
   }
-  if (!sceneReleaseFailed) {
-    uploadedScenes_.clear();
-  }
+  uploadedScenes_.clear();
   scenesLock.unlock();
   if (!deviceLostCleanup) {
     Status idle = WaitUploadQueue();
@@ -364,22 +359,12 @@ Status GaussianRasterPipeline::ShutdownInternal(bool deviceLostCleanup) {
   }
   {
     std::lock_guard<std::recursive_mutex> uploadLock(uploadMutex_);
-    if (!deviceLostCleanup) {
-      retiredResources_.clear();
-      for (UploadContext& context : uploadContexts_) {
-        if (context.uploadBuffer != nullptr && context.mapped != nullptr) {
-          context.uploadBuffer->Unmap(0, nullptr);
-        }
-        context.mapped = nullptr;
-        context.capacityBytes = 0;
-        context.submittedDestination.Reset();
-        context.uploadBuffer.Reset();
-        context.commandList.Reset();
-        context.allocator.Reset();
-        context.fenceValue = 0;
-      }
-      uploadContexts_.clear();
+    retiredResources_.clear();
+    untrackedRetiredResources_.clear();
+    for (UploadContext& context : uploadContexts_) {
+      ReleaseUploadContextDeviceLost(context);
     }
+    uploadContexts_.clear();
   }
 
   if (uploadFenceEvent_ != nullptr) {
@@ -398,10 +383,6 @@ Status GaussianRasterPipeline::ShutdownInternal(bool deviceLostCleanup) {
   directQueueSubmittedFenceValue_ = 0;
   directQueueFence_.Reset();
   gpuTimingEnabled_ = true;
-  if (!deviceLostCleanup) {
-    retiredResources_.clear();
-    untrackedRetiredResources_.clear();
-  }
 
   drawCommandSignature_.Reset();
   prepRootSignature_.Reset();
@@ -935,6 +916,86 @@ void GaussianRasterPipeline::ReleaseChunkRuntime(UploadedChunkRuntime& runtime) 
   runtime.gaussianCount = 0;
   runtime.atlasUploadPending = false;
   runtime.chunkId = 0;
+}
+
+void GaussianRasterPipeline::ReleaseUploadContextDeviceLost(UploadContext& context) {
+  if (context.uploadBuffer != nullptr && context.mapped != nullptr) {
+    context.uploadBuffer->Unmap(0, nullptr);
+  }
+  context.mapped = nullptr;
+  context.capacityBytes = 0;
+  context.submittedDestination.Reset();
+  context.uploadBuffer.Reset();
+  context.commandList.Reset();
+  context.allocator.Reset();
+  context.fenceValue = 0;
+}
+
+void GaussianRasterPipeline::ReleaseRenderScratchResourcesDeviceLost(RenderScratch& scratch) {
+  if (scratch.prepConstantsUpload != nullptr && scratch.prepConstantsMapped != nullptr) {
+    scratch.prepConstantsUpload->Unmap(0, nullptr);
+  }
+  if (scratch.rasterConstantsUpload != nullptr && scratch.rasterConstantsMapped != nullptr) {
+    scratch.rasterConstantsUpload->Unmap(0, nullptr);
+  }
+  scratch = RenderScratch{};
+}
+
+void GaussianRasterPipeline::ReleaseSceneRuntimeDeviceLost(UploadedSceneRuntime& runtime) {
+  if (runtime.batchedChunkParamsUpload != nullptr && runtime.batchedChunkParamsMapped != nullptr) {
+    runtime.batchedChunkParamsUpload->Unmap(0, nullptr);
+  }
+  runtime.batchedChunkParamsMapped = nullptr;
+  runtime.batchedChunkParamsCapacityBytes = 0;
+  runtime.batchedChunkParamsUpload.Reset();
+  runtime.sceneAtlasBuffer.Reset();
+  runtime.sceneIndexToChunkBuffer.Reset();
+  runtime.sceneAtlasCapacity = 0;
+  runtime.sceneAtlasTail = 0;
+  runtime.sceneGaussianStride = 0;
+  runtime.rgbaOffset = 24;
+  runtime.shOffset = 32;
+  runtime.idOffset = 124;
+  runtime.sceneIndexToChunkCapacity = 0;
+  runtime.batchedChunkCount = 0;
+  runtime.maxPrepareGroups = 1;
+  runtime.pendingUploadFenceValue = 0;
+  runtime.directQueueUploadWaitValue = 0;
+  runtime.sceneIndexToChunkUploadPending = true;
+  runtime.atlasFreeRanges.clear();
+  for (UploadedChunkRuntime& chunk : runtime.chunks) {
+    ReleaseChunkRuntime(chunk);
+  }
+  for (const std::shared_ptr<RenderScratch>& scratch : runtime.availableScratch) {
+    if (scratch != nullptr) {
+      ReleaseRenderScratchResourcesDeviceLost(*scratch);
+    }
+  }
+  RenderScratch* scratchNode = runtime.inFlightScratchHead;
+  while (scratchNode != nullptr) {
+    RenderScratch* next = scratchNode->inFlightNext;
+    std::shared_ptr<RenderScratch> keepAlive = scratchNode->inFlightSelf;
+    if (keepAlive != nullptr) {
+      ReleaseRenderScratchResourcesDeviceLost(*keepAlive);
+    } else {
+      ReleaseRenderScratchResourcesDeviceLost(*scratchNode);
+    }
+    scratchNode = next;
+  }
+  for (const std::shared_ptr<RenderScratch>& scratch : runtime.retainedScratch) {
+    if (scratch != nullptr) {
+      ReleaseRenderScratchResourcesDeviceLost(*scratch);
+    }
+  }
+  std::shared_ptr<RenderScratch> publishedScratch = runtime.publishedScratch.lock();
+  if (publishedScratch != nullptr) {
+    ReleaseRenderScratchResourcesDeviceLost(*publishedScratch);
+  }
+  runtime.availableScratch.clear();
+  runtime.inFlightScratchHead = nullptr;
+  runtime.retainedScratch.clear();
+  runtime.publishedScratch.reset();
+  runtime.chunks.clear();
 }
 
 Status GaussianRasterPipeline::ReleaseRenderScratchResources(RenderScratch& scratch) {

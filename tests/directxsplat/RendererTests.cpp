@@ -26,6 +26,7 @@
 #include "dxsplat/settings.h"
 #include "dxsplat/types.h"
 #include "dxsplat/vram_format.h"
+#include "renderer/raster/GaussianRasterPipeline.h"
 
 namespace dxsplat {
 namespace {
@@ -409,6 +410,9 @@ class RenderHarness {
   }
 
   Renderer& renderer() { return renderer_; }
+  ID3D12Device* device() const { return device_.Get(); }
+  ID3D12CommandQueue* queue() const { return queue_.Get(); }
+  ID3D12Fence* fence() const { return fence_.Get(); }
   ID3D12GraphicsCommandList* commandList() const { return commandList_.Get(); }
 
  private:
@@ -770,6 +774,30 @@ TEST_CASE("Renderer reset refuses outstanding mutation tokens and recovers after
   CHECK_FALSE(harness.renderer().Reset().ok);
   REQUIRE(harness.renderer().EndSceneMutation(token).ok);
   CHECK(harness.renderer().Reset().ok);
+}
+
+TEST_CASE("Raster device-lost shutdown releases retained resources") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  GaussianRasterPipeline raster;
+  Status rasterInit = raster.Initialize(harness.device(), harness.queue(), harness.fence(), nullptr, nullptr, true);
+  if (!rasterInit.ok) {
+    INFO(rasterInit.message);
+    return;
+  }
+
+  Scene scene = MakeTinyScene();
+  std::vector<uint64_t> chunkIds{1u};
+  REQUIRE(raster.CreateOrUpdateScene(1u, scene, chunkIds).ok);
+  raster.NotifyDeviceLost();
+  CHECK_FALSE(raster.ShutdownDeviceLost().ok);
+  CHECK(raster.Initialize(harness.device(), harness.queue(), harness.fence(), nullptr, nullptr, true).ok);
+  CHECK(raster.Shutdown().ok);
 }
 
 TEST_CASE("Renderer uploads and exposes every VRAM format combination") {
