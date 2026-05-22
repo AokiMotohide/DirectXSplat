@@ -1793,7 +1793,7 @@ Status GaussianRasterPipeline::AddChunk(uint64_t sceneId, uint64_t chunkId, cons
   return Status::Error("scene chunk allocation failed");
 }
 
-Status GaussianRasterPipeline::UpdateChunk(uint64_t sceneId, uint64_t chunkId, const GaussianSet& chunkSet) {
+Status GaussianRasterPipeline::UpdateChunk(uint64_t sceneId, uint64_t chunkId, const GaussianSet& chunkSet) try {
   std::shared_ptr<UploadedSceneRuntime> runtime;
   {
     std::shared_lock<std::shared_mutex> lock(uploadedScenesMutex_);
@@ -1906,6 +1906,10 @@ Status GaussianRasterPipeline::UpdateChunk(uint64_t sceneId, uint64_t chunkId, c
   }
   ReleaseChunkRuntime(old);
   return Status::Ok();
+} catch (const std::bad_alloc&) {
+  return Status::Error("scene chunk allocation failed");
+} catch (const std::length_error&) {
+  return Status::Error("scene chunk allocation failed");
 }
 
 Status GaussianRasterPipeline::RemoveChunk(uint64_t sceneId, uint64_t chunkId) {

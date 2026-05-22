@@ -573,6 +573,18 @@ class Renderer::Impl {
     }
   };
 
+  struct ResidencyUse {
+    Impl* owner = nullptr;
+    std::shared_ptr<ResidencyInstanceRecord> instance;
+    const RenderFrameContext* frameContext = nullptr;
+    bool active = false;
+    ~ResidencyUse() {
+      if (active && owner != nullptr) {
+        owner->ReleaseResidencyInstance(instance, frameContext);
+      }
+    }
+  };
+
   struct SceneMutationGuard {
     Impl* owner = nullptr;
     SceneMutationToken token{};
@@ -2257,7 +2269,7 @@ class Renderer::Impl {
     return Status::Ok();
   }
 
-  Status PrepareSceneForRender(UploadedSceneHandle sceneHandle, const RenderInput& input, const RenderFrameContext* frameContext, RenderPreparationResult& result) {
+  Status PrepareSceneForRender(UploadedSceneHandle sceneHandle, const RenderInput& input, const RenderFrameContext* frameContext, RenderPreparationResult& result) try {
     Status frameStatus = ValidateFrameContext(frameContext);
     if (!frameStatus.ok) {
       return frameStatus;
@@ -2276,10 +2288,17 @@ class Renderer::Impl {
     if (!acquired.ok) {
       return acquired;
     }
+    ResidencyUse residencyUse{this, instance, nullptr, true};
     result = {};
-    Status prepared = PrepareSceneInternal(record, instance, record->version, input, result.stats);
-    ReleaseResidencyInstance(instance, nullptr);
-    return prepared;
+    return PrepareSceneInternal(record, instance, record->version, input, result.stats);
+  } catch (const std::bad_alloc&) {
+    return Status::Error("prepare allocation failed");
+  } catch (const std::length_error&) {
+    return Status::Error("prepare allocation failed");
+  } catch (const std::exception&) {
+    return Status::Error("prepare failed");
+  } catch (...) {
+    return Status::Error("prepare failed");
   }
 
   Status Render(ID3D12GraphicsCommandList* commandList,
