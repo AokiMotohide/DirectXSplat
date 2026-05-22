@@ -2,13 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <new>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -23,6 +23,12 @@ namespace {
 constexpr uint32_t kMaxFastPlyElementRows = 64u * 1024u * 1024u;
 constexpr uint32_t kMaxFastPlyChunkRows = 4u * 1024u * 1024u;
 constexpr uint64_t kMaxFastPlyExpandedBytes = 4ull * 1024ull * 1024ull * 1024ull;
+constexpr size_t kMaxFastPlyHeaderBytes = 4ull * 1024ull * 1024ull;
+constexpr size_t kMaxFastPlyHeaderLineBytes = 1024ull * 1024ull;
+constexpr size_t kMaxFastPlyHeaderTokens = 16;
+constexpr size_t kMaxFastPlyHeaderElements = 4096;
+constexpr size_t kMaxFastPlyHeaderProperties = 4096;
+constexpr size_t kMaxFastPlyHeaderComments = 4096;
 
 struct FastChunkInfo {
   Vec3 minPosition{};
@@ -483,27 +489,75 @@ struct FastPlyHeader {
   std::streampos bodyOffset{};
 };
 
-std::vector<std::string> SplitSpaces(const std::string& s) {
-  std::vector<std::string> out;
-  std::istringstream in(s);
-  std::string item;
-  while (in >> item) {
-    out.push_back(item);
+StatusOr<bool> ReadFastPlyHeaderLine(std::ifstream& file, std::string& line, size_t& headerBytes) {
+  line.clear();
+  for (;;) {
+    const int ch = file.get();
+    if (ch == std::char_traits<char>::eof()) {
+      if (file.eof()) {
+        return StatusOr<bool>::Ok(!line.empty());
+      }
+      return StatusOr<bool>::Error("invalid ply header");
+    }
+    if (headerBytes >= kMaxFastPlyHeaderBytes) {
+      return StatusOr<bool>::Error("ply header is too large");
+    }
+    ++headerBytes;
+    if (ch == '\n') {
+      return StatusOr<bool>::Ok(true);
+    }
+    if (line.size() >= kMaxFastPlyHeaderLineBytes) {
+      return StatusOr<bool>::Error("ply header line too large");
+    }
+    line.push_back(static_cast<char>(ch));
   }
-  return out;
+}
+
+StatusOr<std::vector<std::string>> SplitSpaces(const std::string& s) {
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < s.size()) {
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) {
+      ++i;
+    }
+    if (i >= s.size()) {
+      break;
+    }
+    const size_t start = i;
+    while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i]))) {
+      ++i;
+    }
+    if (out.size() >= kMaxFastPlyHeaderTokens) {
+      return StatusOr<std::vector<std::string>>::Error("invalid ply header");
+    }
+    out.emplace_back(s.substr(start, i - start));
+  }
+  return StatusOr<std::vector<std::string>>::Ok(std::move(out));
 }
 
 StatusOr<FastPlyHeader> ReadFastPlyHeader(std::ifstream& file) {
   FastPlyHeader header{};
   std::string line;
-  if (!std::getline(file, line) || Trim(line) != "ply") {
+  size_t headerBytes = 0;
+  auto lineRead = ReadFastPlyHeaderLine(file, line, headerBytes);
+  if (!lineRead.ok()) {
+    return StatusOr<FastPlyHeader>::Error(lineRead.status.message);
+  }
+  if (!lineRead.value || Trim(line) != "ply") {
     return StatusOr<FastPlyHeader>::Error("invalid ply magic");
   }
 
   ply::PlyElement* currentElement = nullptr;
   bool formatSet = false;
   bool headerEnded = false;
-  while (std::getline(file, line)) {
+  for (;;) {
+    lineRead = ReadFastPlyHeaderLine(file, line, headerBytes);
+    if (!lineRead.ok()) {
+      return StatusOr<FastPlyHeader>::Error(lineRead.status.message);
+    }
+    if (!lineRead.value) {
+      break;
+    }
     if (!line.empty() && line.back() == '\r') {
       line.pop_back();
     }
@@ -517,18 +571,25 @@ StatusOr<FastPlyHeader> ReadFastPlyHeader(std::ifstream& file) {
       break;
     }
 
-    const std::vector<std::string> tokens = SplitSpaces(trimmed);
-    if (tokens.empty()) {
-      continue;
-    }
-
-    if (tokens[0] == "comment") {
+    if (trimmed.rfind("comment", 0) == 0 &&
+        (trimmed.size() == 7 || std::isspace(static_cast<unsigned char>(trimmed[7])))) {
       if (trimmed.size() > 8) {
+        if (header.comments.size() >= kMaxFastPlyHeaderComments) {
+          return StatusOr<FastPlyHeader>::Error("ply header is too large");
+        }
         header.comments.emplace_back(trimmed.substr(8));
       }
       continue;
     }
 
+    auto tokensResult = SplitSpaces(trimmed);
+    if (!tokensResult.ok()) {
+      return StatusOr<FastPlyHeader>::Error(tokensResult.status.message);
+    }
+    const std::vector<std::string>& tokens = tokensResult.value;
+    if (tokens.empty()) {
+      continue;
+    }
     if (tokens[0] == "format") {
       if (tokens.size() < 3) {
         return StatusOr<FastPlyHeader>::Error("invalid format line");
@@ -559,6 +620,9 @@ StatusOr<FastPlyHeader> ReadFastPlyHeader(std::ifstream& file) {
       } catch (...) {
         return StatusOr<FastPlyHeader>::Error("invalid element count");
       }
+      if (header.elements.size() >= kMaxFastPlyHeaderElements) {
+        return StatusOr<FastPlyHeader>::Error("too many ply elements");
+      }
       ply::PlyElement elem{};
       elem.name = tokens[1];
       elem.count = static_cast<uint32_t>(count);
@@ -588,6 +652,9 @@ StatusOr<FastPlyHeader> ReadFastPlyHeader(std::ifstream& file) {
         }
       } else {
         return StatusOr<FastPlyHeader>::Error("invalid property line");
+      }
+      if (currentElement->properties.size() >= kMaxFastPlyHeaderProperties) {
+        return StatusOr<FastPlyHeader>::Error("too many ply properties");
       }
       currentElement->properties.push_back(std::move(prop));
       continue;

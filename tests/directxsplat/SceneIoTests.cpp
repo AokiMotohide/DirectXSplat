@@ -163,6 +163,12 @@ TEST_CASE("Scene IO rejects malformed and hostile PLY inputs") {
   loaded = LoadSceneFromFile(hugeToken.string());
   CHECK_FALSE(loaded.ok());
 
+  const std::filesystem::path fastHugeHeaderLine = dir / "fast_huge_header_line.ply";
+  WriteFile(fastHugeHeaderLine, std::string("ply\n") + std::string(1024 * 1024 + 1, 'x') + "\n");
+  loaded = LoadSceneFromFile(fastHugeHeaderLine.string());
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "ply header line too large");
+
   const std::filesystem::path truncatedBinary = dir / "truncated_binary.ply";
   {
     std::ofstream file(truncatedBinary, std::ios::binary);
