@@ -350,16 +350,17 @@ float ScreenRadiusForChunk(const Aabb& bounds, const RenderInput& input) {
   const float radius = std::max(ComputeAabbRadius(bounds), 1e-3f);
   const Vec4 center4{center.x, center.y, center.z, 1.0f};
   const Vec4 view = Mul(input.view, center4);
+  const float viewDepth = view.z * (input.settings.positiveViewSpaceZ ? 1.0f : -1.0f);
   const float nearPlane = std::max(input.nearPlane, 1e-4f);
-  if (!Finite(view.z) || view.z + radius <= nearPlane) {
+  if (!Finite(view.z) || viewDepth + radius <= nearPlane) {
     return 0.0f;
   }
   const float focalX = std::abs(input.proj.m[0]) * static_cast<float>(std::max(input.viewportWidth, 1u)) * 0.5f;
   const float focalY = std::abs(input.proj.m[5]) * static_cast<float>(std::max(input.viewportHeight, 1u)) * 0.5f;
   const float focal = std::max(focalX, focalY);
-  const float screenRadius = radius * focal / std::max(view.z - radius, nearPlane);
+  const float screenRadius = radius * focal / std::max(viewDepth - radius, nearPlane);
   const Vec4 clip = Mul(input.proj, view);
-  if (view.z > nearPlane && std::abs(clip.w) > 1e-6f) {
+  if (viewDepth > nearPlane && std::abs(clip.w) > 1e-6f) {
     const float dilation = input.settings.fastCulling ? std::max(input.settings.frustumDilation, 0.0f) : 1.0f;
     const float slackX = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportWidth, 1u)) + dilation;
     const float slackY = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportHeight, 1u)) + dilation;
@@ -379,16 +380,17 @@ float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& 
   radius = std::max(radius, 1e-3f);
   const Vec4 center4{center.x, center.y, center.z, 1.0f};
   const Vec4 view = Mul(input.view, center4);
+  const float viewDepth = view.z * (input.settings.positiveViewSpaceZ ? 1.0f : -1.0f);
   const float nearPlane = std::max(input.nearPlane, 1e-4f);
-  if (!Finite(view.z) || view.z + radius <= nearPlane) {
+  if (!Finite(view.z) || viewDepth + radius <= nearPlane) {
     return 0.0f;
   }
   const float focalX = std::abs(input.proj.m[0]) * static_cast<float>(std::max(input.viewportWidth, 1u)) * 0.5f;
   const float focalY = std::abs(input.proj.m[5]) * static_cast<float>(std::max(input.viewportHeight, 1u)) * 0.5f;
   const float focal = std::max(focalX, focalY);
-  const float screenRadius = radius * focal / std::max(view.z - radius, nearPlane);
+  const float screenRadius = radius * focal / std::max(viewDepth - radius, nearPlane);
   const Vec4 clip = Mul(input.proj, view);
-  if (view.z > nearPlane && std::abs(clip.w) > 1e-6f) {
+  if (viewDepth > nearPlane && std::abs(clip.w) > 1e-6f) {
     const float dilation = input.settings.fastCulling ? std::max(input.settings.frustumDilation, 0.0f) : 1.0f;
     const float slackX = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportWidth, 1u)) + dilation;
     const float slackY = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportHeight, 1u)) + dilation;
@@ -427,6 +429,7 @@ uint64_t MakeResidencyInputSignature(const RenderInput& input) {
   hash = HashCombine(hash, HashBytes(&input.settings.lodHysteresis, sizeof(input.settings.lodHysteresis)));
   hash = HashCombine(hash, HashBytes(&input.settings.fastCulling, sizeof(input.settings.fastCulling)));
   hash = HashCombine(hash, HashBytes(&input.settings.frustumDilation, sizeof(input.settings.frustumDilation)));
+  hash = HashCombine(hash, HashBytes(&input.settings.positiveViewSpaceZ, sizeof(input.settings.positiveViewSpaceZ)));
   return hash;
 }
 

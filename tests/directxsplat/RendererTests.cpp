@@ -636,6 +636,25 @@ TEST_CASE("Renderer rejects stale frame contexts") {
   CHECK_FALSE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, stale, renderResult).ok);
 }
 
+TEST_CASE("Renderer prepares negative view-space Z residency") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  RenderInput input = MakeRenderInput(64, 64);
+  input.view = LookAt({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f});
+  input.settings.positiveViewSpaceZ = false;
+  RenderPreparationResult preparation{};
+  REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, harness.FrameContext(), &preparation).ok);
+  CHECK(preparation.stats.residentGaussians == 2u);
+  CHECK(preparation.stats.residentChunks == 1u);
+}
+
 TEST_CASE("Renderer reports dirty render errors as requiring submission") {
   RenderHarness harness;
   const Status init = harness.Initialize();

@@ -90,4 +90,12 @@ TEST_CASE("Shaders stay final-only") {
   CHECK(raster.find("case 15u") == std::string::npos);
 }
 
+TEST_CASE("Renderer residency cache keys include view-space depth convention") {
+  const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
+  const std::string renderer = ReadTextFile(root / "directxsplat" / "src" / "renderer" / "Renderer.cpp");
+
+  REQUIRE_FALSE(renderer.empty());
+  CHECK(renderer.find("HashBytes(&input.settings.positiveViewSpaceZ") != std::string::npos);
+}
+
 }  // namespace dxsplat
