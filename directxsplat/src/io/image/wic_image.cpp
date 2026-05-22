@@ -275,12 +275,20 @@ StatusOr<DecodedImage> DecodeWithWicMemory(const std::vector<uint8_t>& bytes) {
 
 }  
 
-StatusOr<DecodedImage> DecodeImageFromFileWic(const std::string& path) {
+StatusOr<DecodedImage> DecodeImageFromFileWic(const std::string& path) try {
   const auto wicResult = DecodeWithWicFile(path);
   if (wicResult.ok()) {
     return wicResult;
   }
   return DecodeWithStbFile(path);
+} catch (const ghc::filesystem::filesystem_error&) {
+  return StatusOr<DecodedImage>::Error("image filesystem error");
+} catch (const std::bad_alloc&) {
+  return StatusOr<DecodedImage>::Error("image allocation failed");
+} catch (const std::length_error&) {
+  return StatusOr<DecodedImage>::Error("image dimensions are too large");
+} catch (const std::exception&) {
+  return StatusOr<DecodedImage>::Error("failed to decode image");
 }
 
 StatusOr<DecodedImage> DecodeImageFromMemoryWic(const std::vector<uint8_t>& bytes) {

@@ -14,6 +14,7 @@
 #include "dxsplat/scene.h"
 #include "io/formats/ply/raw/ply_reader.h"
 #include "io/formats/ply/raw/ply_writer.h"
+#include "io/image/wic_image.h"
 
 namespace dxsplat {
 namespace {
@@ -324,6 +325,12 @@ TEST_CASE("SOG metadata schema variants fail through StatusOr instead of excepti
 
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("WIC file decoder returns StatusOr errors for hostile paths") {
+  const std::string hostilePath("\xff\xfe\xfd", 3);
+  const auto decoded = io::DecodeImageFromFileWic(hostilePath);
+  CHECK_FALSE(decoded.ok());
 }
 
 }  // namespace dxsplat
