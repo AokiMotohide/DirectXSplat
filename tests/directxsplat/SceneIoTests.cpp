@@ -199,6 +199,30 @@ TEST_CASE("Scene IO rejects malformed and hostile PLY inputs") {
   CHECK_FALSE(loaded.ok());
   CHECK(loaded.status.message == "ply element count too large");
 
+  const std::filesystem::path fastExpandedBudget = dir / "fast_expanded_budget_binary.ply";
+  WriteFile(fastExpandedBudget,
+            "ply\n"
+            "format binary_little_endian 1.0\n"
+            "element vertex 20000000\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "property float scale_x\n"
+            "property float scale_y\n"
+            "property float scale_z\n"
+            "property float rot_0\n"
+            "property float rot_1\n"
+            "property float rot_2\n"
+            "property float rot_3\n"
+            "property float opacity\n"
+            "property uchar red\n"
+            "property uchar green\n"
+            "property uchar blue\n"
+            "end_header\n");
+  loaded = LoadSceneFromFile(fastExpandedBudget.string());
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "ply expanded data too large");
+
   const std::filesystem::path fastHugeChunk = dir / "fast_huge_chunk_binary.ply";
   WriteFile(fastHugeChunk,
             "ply\n"

@@ -22,6 +22,17 @@ namespace {
 
 constexpr uint32_t kMaxFastPlyElementRows = 64u * 1024u * 1024u;
 constexpr uint32_t kMaxFastPlyChunkRows = 4u * 1024u * 1024u;
+constexpr uint64_t kMaxFastPlyExpandedBytes = 4ull * 1024ull * 1024ull * 1024ull;
+
+struct FastChunkInfo {
+  Vec3 minPosition{};
+  Vec3 maxPosition{};
+  Vec3 minScale{};
+  Vec3 maxScale{};
+  Vec3 minColor{};
+  Vec3 maxColor{};
+  bool hasColor = false;
+};
 
 float DecodeLogScaleValue(float raw) {
   if (!std::isfinite(raw)) {
@@ -630,6 +641,39 @@ Status ValidateFastPlyCounts(const FastPlyHeader& header) {
   return Status::Ok();
 }
 
+Status AddFastPlyExpandedBytes(uint64_t count, uint64_t stride, uint64_t& bytes) {
+  if (stride != 0 && count > std::numeric_limits<uint64_t>::max() / stride) {
+    return Status::Error("ply expanded data too large");
+  }
+  const uint64_t added = count * stride;
+  if (bytes > std::numeric_limits<uint64_t>::max() - added) {
+    return Status::Error("ply expanded data too large");
+  }
+  bytes += added;
+  if (bytes > kMaxFastPlyExpandedBytes) {
+    return Status::Error("ply expanded data too large");
+  }
+  return Status::Ok();
+}
+
+Status ValidateFastPlyExpandedStorage(const FastPlyHeader& header) {
+  uint64_t bytes = 0;
+  for (const ply::PlyElement& element : header.elements) {
+    if (element.name == "vertex") {
+      Status status = AddFastPlyExpandedBytes(element.count, sizeof(Gaussian) + sizeof(Vec3), bytes);
+      if (!status.ok) {
+        return status;
+      }
+    } else if (element.name == "chunk") {
+      Status status = AddFastPlyExpandedBytes(element.count, sizeof(FastChunkInfo), bytes);
+      if (!status.ok) {
+        return status;
+      }
+    }
+  }
+  return Status::Ok();
+}
+
 StatusOr<uint64_t> FastPlyMinimumRowBytes(const ply::PlyElement& element) {
   uint64_t rowBytes = 0;
   for (const ply::PlyProperty& prop : element.properties) {
@@ -650,6 +694,10 @@ Status ValidateFastPlyBodyFootprint(const FastPlyHeader& header, uint64_t fileSi
   Status countStatus = ValidateFastPlyCounts(header);
   if (!countStatus.ok) {
     return countStatus;
+  }
+  Status storageStatus = ValidateFastPlyExpandedStorage(header);
+  if (!storageStatus.ok) {
+    return storageStatus;
   }
   const auto bodyOffset = StreamPosBytes(header.bodyOffset);
   if (!bodyOffset.ok()) {
@@ -962,16 +1010,6 @@ StatusOr<PlyLoadResult> LoadBinaryStandardPlyFast(std::ifstream& file, const Fas
   out.set.bounds = ComputeAabb(points);
   return StatusOr<PlyLoadResult>::Ok(std::move(out));
 }
-
-struct FastChunkInfo {
-  Vec3 minPosition{};
-  Vec3 maxPosition{};
-  Vec3 minScale{};
-  Vec3 maxScale{};
-  Vec3 minColor{};
-  Vec3 maxColor{};
-  bool hasColor = false;
-};
 
 StatusOr<PlyLoadResult> LoadBinaryCompressedPlyFast(std::ifstream& file, const FastPlyHeader& header,
                                                     const std::string& setName) {
