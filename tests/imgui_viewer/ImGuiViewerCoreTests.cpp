@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -93,6 +95,23 @@ TEST_CASE("image metrics match deterministic reference values") {
   CHECK(std::isinf(invalid.flipLike));
   CHECK(invalid.psnr == doctest::Approx(0.0));
   CHECK(BuildDiffImage(a, wrongSize).Empty());
+
+  const appcommon::ImageRgba8 shortPixels = MakeImage(2u, 1u, {0u, 0u, 0u, 255u});
+  const ImageComparison shortInvalid = CompareImages(a, shortPixels);
+  CHECK(std::isinf(shortInvalid.mae));
+  CHECK(std::isinf(shortInvalid.mse));
+  CHECK(std::isinf(shortInvalid.flipLike));
+  CHECK(shortInvalid.psnr == doctest::Approx(0.0));
+  CHECK(BuildDiffImage(a, shortPixels).Empty());
+
+  const appcommon::ImageRgba8 overflowHeader =
+      MakeImage(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(), {255u});
+  const ImageComparison overflowInvalid = CompareImages(overflowHeader, overflowHeader);
+  CHECK(std::isinf(overflowInvalid.mae));
+  CHECK(std::isinf(overflowInvalid.mse));
+  CHECK(std::isinf(overflowInvalid.flipLike));
+  CHECK(overflowInvalid.psnr == doctest::Approx(0.0));
+  CHECK(BuildDiffImage(overflowHeader, overflowHeader).Empty());
 }
 
 }  // namespace dxsplat

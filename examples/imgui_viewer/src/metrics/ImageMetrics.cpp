@@ -1,23 +1,54 @@
 #include "metrics/ImageMetrics.h"
 
 #include <cmath>
+#include <limits>
+#include <new>
+#include <stdexcept>
 
 namespace dxsplat {
+namespace {
+
+ImageComparison InvalidComparison() {
+  ImageComparison out{};
+  out.mae = std::numeric_limits<double>::infinity();
+  out.mse = std::numeric_limits<double>::infinity();
+  out.psnr = 0.0;
+  out.flipLike = std::numeric_limits<double>::infinity();
+  return out;
+}
+
+bool ImageByteCount(const appcommon::ImageRgba8& image, size_t& byteCount) {
+  if (image.Empty()) {
+    return false;
+  }
+  const size_t width = image.width;
+  const size_t height = image.height;
+  if (height != 0 && width > std::numeric_limits<size_t>::max() / height) {
+    return false;
+  }
+  const size_t pixels = width * height;
+  if (pixels > std::numeric_limits<size_t>::max() / 4u) {
+    return false;
+  }
+  byteCount = pixels * 4u;
+  return image.pixels.size() >= byteCount;
+}
+
+}
 
 ImageComparison CompareImages(const appcommon::ImageRgba8& a, const appcommon::ImageRgba8& b) {
-  ImageComparison out{};
-  if (a.width != b.width || a.height != b.height || a.Empty() || b.Empty()) {
-    out.mae = std::numeric_limits<double>::infinity();
-    out.mse = std::numeric_limits<double>::infinity();
-    out.psnr = 0.0;
-    out.flipLike = std::numeric_limits<double>::infinity();
-    return out;
+  size_t byteCount = 0;
+  size_t otherByteCount = 0;
+  if (a.width != b.width || a.height != b.height || !ImageByteCount(a, byteCount) ||
+      !ImageByteCount(b, otherByteCount) || byteCount != otherByteCount) {
+    return InvalidComparison();
   }
 
-  const size_t count = static_cast<size_t>(a.width) * a.height;
+  const size_t count = byteCount / 4u;
   double absSum = 0.0;
   double sqSum = 0.0;
   double perceptualSum = 0.0;
+  ImageComparison out{};
 
   for (size_t i = 0; i < count; ++i) {
     const size_t o = i * 4;
@@ -41,14 +72,23 @@ ImageComparison CompareImages(const appcommon::ImageRgba8& a, const appcommon::I
 
 appcommon::ImageRgba8 BuildDiffImage(const appcommon::ImageRgba8& a, const appcommon::ImageRgba8& b) {
   appcommon::ImageRgba8 out{};
-  if (a.width != b.width || a.height != b.height || a.Empty() || b.Empty()) {
+  size_t byteCount = 0;
+  size_t otherByteCount = 0;
+  if (a.width != b.width || a.height != b.height || !ImageByteCount(a, byteCount) ||
+      !ImageByteCount(b, otherByteCount) || byteCount != otherByteCount) {
     return out;
   }
 
   out.width = a.width;
   out.height = a.height;
-  out.pixels.resize(static_cast<size_t>(out.width) * out.height * 4, 255);
-  for (size_t i = 0; i < static_cast<size_t>(out.width) * out.height; ++i) {
+  try {
+    out.pixels.resize(byteCount, 255);
+  } catch (const std::bad_alloc&) {
+    return {};
+  } catch (const std::length_error&) {
+    return {};
+  }
+  for (size_t i = 0; i < byteCount / 4u; ++i) {
     const size_t o = i * 4;
     for (size_t c = 0; c < 3; ++c) {
       const int da = static_cast<int>(a.pixels[o + c]);
