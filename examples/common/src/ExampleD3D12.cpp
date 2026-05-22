@@ -35,6 +35,8 @@ D3D12ExampleDevice::~D3D12ExampleDevice() {
 
 Status D3D12ExampleDevice::Initialize(bool forceWarp) {
   Shutdown();
+  queueLost_ = false;
+  submittedWorkWithoutFence_ = false;
 
   HRESULT hr = CreateDXGIFactory2(0, IID_PPV_ARGS(factory_.GetAddressOf()));
   if (FAILED(hr)) {
@@ -119,11 +121,16 @@ Status D3D12ExampleDevice::Initialize(bool forceWarp) {
 }
 
 void D3D12ExampleDevice::Shutdown() {
-  if (queue_ != nullptr && fence_ != nullptr) {
+  if (queue_ != nullptr && fence_ != nullptr && !queueLost_ && !submittedWorkWithoutFence_) {
     const uint64_t value = fenceValue_ + 1;
     if (SUCCEEDED(queue_->Signal(fence_.Get(), value))) {
       fenceValue_ = value;
-      (void)WaitForFence(value);
+      Status waited = WaitForFence(value);
+      if (!waited.ok) {
+        queueLost_ = true;
+      }
+    } else {
+      queueLost_ = true;
     }
   }
   if (fenceEvent_ != nullptr) {
@@ -138,9 +145,14 @@ void D3D12ExampleDevice::Shutdown() {
   adapter_.Reset();
   factory_.Reset();
   fenceValue_ = 0;
+  queueLost_ = false;
+  submittedWorkWithoutFence_ = false;
 }
 
 Status D3D12ExampleDevice::BeginCommands() {
+  if (queueLost_ || submittedWorkWithoutFence_) {
+    return Status::Error("direct queue is lost");
+  }
   HRESULT hr = allocator_->Reset();
   if (FAILED(hr)) {
     return Status::Error("command allocator reset failed " + HrString(hr));
@@ -153,15 +165,26 @@ Status D3D12ExampleDevice::BeginCommands() {
 }
 
 Status D3D12ExampleDevice::FinishCommands(UploadSyncPoint uploadSyncPoint, bool executeCommandList) {
+  if (queueLost_ || submittedWorkWithoutFence_) {
+    return Status::Error("direct queue is lost");
+  }
+
   if (uploadSyncPoint.IsValid()) {
     HRESULT waitHr = queue_->Wait(uploadSyncPoint.fence, uploadSyncPoint.value);
     if (FAILED(waitHr)) {
+      queueLost_ = true;
       return Status::Error("direct queue upload wait failed " + HrString(waitHr));
     }
   }
 
   HRESULT hr = commandList_->Close();
   if (FAILED(hr)) {
+    if (executeCommandList) {
+      Status signaled = SignalFrame({});
+      if (!signaled.ok) {
+        return signaled;
+      }
+    }
     return Status::Error("command list close failed " + HrString(hr));
   }
 
@@ -170,14 +193,27 @@ Status D3D12ExampleDevice::FinishCommands(UploadSyncPoint uploadSyncPoint, bool 
   }
 
   ID3D12CommandList* lists[] = {commandList_.Get()};
+  const uint64_t expectedFenceValue = fenceValue_ + 1;
   queue_->ExecuteCommandLists(1, lists);
-  return SignalFrame({});
+  Status signaled = SignalFrame({});
+  if (!signaled.ok) {
+    if (fenceValue_ < expectedFenceValue) {
+      submittedWorkWithoutFence_ = true;
+    }
+    queueLost_ = true;
+  }
+  return signaled;
 }
 
 Status D3D12ExampleDevice::SignalFrame(UploadSyncPoint uploadSyncPoint) {
+  if (queueLost_ || submittedWorkWithoutFence_) {
+    return Status::Error("direct queue is lost");
+  }
+
   if (uploadSyncPoint.IsValid()) {
     HRESULT waitHr = queue_->Wait(uploadSyncPoint.fence, uploadSyncPoint.value);
     if (FAILED(waitHr)) {
+      queueLost_ = true;
       return Status::Error("direct queue upload wait failed " + HrString(waitHr));
     }
   }
@@ -185,10 +221,15 @@ Status D3D12ExampleDevice::SignalFrame(UploadSyncPoint uploadSyncPoint) {
   const uint64_t value = fenceValue_ + 1;
   HRESULT hr = queue_->Signal(fence_.Get(), value);
   if (FAILED(hr)) {
+    queueLost_ = true;
     return Status::Error("queue signal failed " + HrString(hr));
   }
   fenceValue_ = value;
-  return WaitForFence(value);
+  Status waited = WaitForFence(value);
+  if (!waited.ok) {
+    queueLost_ = true;
+  }
+  return waited;
 }
 
 RenderFrameContext D3D12ExampleDevice::FrameContext() const {

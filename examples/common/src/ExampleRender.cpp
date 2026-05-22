@@ -100,6 +100,14 @@ Status RenderSceneToOffscreen(D3D12ExampleDevice& device,
                               const RenderInput& input,
                               OffscreenTarget& target,
                               RenderResult& outResult) {
+  auto finishCommands = [&](UploadSyncPoint uploadSyncPoint, bool executeCommandList) {
+    Status finish = device.FinishCommands(uploadSyncPoint, executeCommandList);
+    if (!finish.ok && (device.QueueLost() || device.SubmittedWorkWithoutFence())) {
+      renderer.NotifyDeviceLost();
+    }
+    return finish;
+  };
+
   Status status = device.BeginCommands();
   if (!status.ok) {
     return status;
@@ -109,7 +117,7 @@ Status RenderSceneToOffscreen(D3D12ExampleDevice& device,
   RenderPreparationResult preparation{};
   status = renderer.PrepareSceneForRender(sceneHandle, input, frameContext, &preparation);
   if (!status.ok) {
-    Status finish = device.FinishCommands(preparation.submission.uploadSyncPoint, preparation.submission.submissionRequired);
+    Status finish = finishCommands(preparation.submission.uploadSyncPoint, preparation.submission.submissionRequired);
     return finish.ok ? status : finish;
   }
 
@@ -120,13 +128,13 @@ Status RenderSceneToOffscreen(D3D12ExampleDevice& device,
   if (renderStatus.ok) {
     status = device.RecordReadback(target);
     if (!status.ok) {
-      Status finish = device.FinishCommands(result.submission.uploadSyncPoint, result.submission.submissionRequired);
+      Status finish = finishCommands(result.submission.uploadSyncPoint, result.submission.submissionRequired);
       return finish.ok ? status : finish;
     }
     copyRecorded = true;
   }
 
-  Status finish = device.FinishCommands(result.submission.uploadSyncPoint, result.submission.submissionRequired || copyRecorded);
+  Status finish = finishCommands(result.submission.uploadSyncPoint, result.submission.submissionRequired || copyRecorded);
   if (!finish.ok) {
     return finish;
   }

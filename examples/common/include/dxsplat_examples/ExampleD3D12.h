@@ -51,6 +51,8 @@ class D3D12ExampleDevice {
   ID3D12Fence* Fence() const { return fence_.Get(); }
   uint64_t CompletedFenceValue() const { return fence_ != nullptr ? fence_->GetCompletedValue() : 0; }
   uint64_t NextFenceValue() const { return fenceValue_ + 1; }
+  bool QueueLost() const { return queueLost_; }
+  bool SubmittedWorkWithoutFence() const { return submittedWorkWithoutFence_; }
 
  private:
   Status WaitForFence(uint64_t value);
@@ -64,6 +66,8 @@ class D3D12ExampleDevice {
   Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
   HANDLE fenceEvent_ = nullptr;
   uint64_t fenceValue_ = 0;
+  bool queueLost_ = false;
+  bool submittedWorkWithoutFence_ = false;
 };
 
 }  // namespace dxsplat::examples
