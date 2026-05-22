@@ -112,4 +112,13 @@ TEST_CASE("SwapchainContext uninitialized public calls fail without crashing") {
   CHECK(context.CurrentBackBuffer() == nullptr);
 }
 
+TEST_CASE("SwapchainContext queue-lost notification disables submission") {
+  appcommon::SwapchainContext context;
+  context.NotifyQueueLost();
+  CHECK_FALSE(context.BeginFrame().ok);
+  CHECK_FALSE(context.EndFrame(false).ok);
+  CHECK_FALSE(context.WaitForGpu().ok);
+  CHECK(context.PendingSubmissionFenceValue() == 0u);
+}
+
 }  // namespace dxsplat

@@ -183,6 +183,8 @@ int main(int argc, char** argv) {
                                                         result.submission.uploadSyncPoint.value);
         if (FAILED(waitHr)) {
           status = Status::Error("direct queue upload sync failed");
+          renderer.NotifyDeviceLost();
+          swapchain.NotifyQueueLost();
         }
       }
     }

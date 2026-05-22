@@ -280,6 +280,10 @@ int Application::Run() {
           HRESULT waitHr = d3d_.CommandQueue()->Wait(renderResult.submission.uploadSyncPoint.fence, renderResult.submission.uploadSyncPoint.value);
           if (FAILED(waitHr)) {
             statusMessage_ = "direct queue upload sync failed";
+            renderer_.NotifyDeviceLost();
+            d3d_.NotifyQueueLost();
+            MessageBoxA(window_.Hwnd(), statusMessage_.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
+            break;
           }
         }
       }

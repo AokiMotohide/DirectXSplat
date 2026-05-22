@@ -460,6 +460,10 @@ dxsplat::Status SwapchainContext::WaitForGpu() {
   return dxsplat::Status::Ok();
 }
 
+void SwapchainContext::NotifyQueueLost() {
+  queueLost_ = true;
+}
+
 ID3D12Device* SwapchainContext::Device() const { return device_.Get(); }
 ID3D12GraphicsCommandList* SwapchainContext::CommandList() const { return commandList_.Get(); }
 ID3D12CommandQueue* SwapchainContext::CommandQueue() const { return queue_.Get(); }

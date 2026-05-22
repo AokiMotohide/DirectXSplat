@@ -33,6 +33,7 @@ class SwapchainContext {
   dxsplat::Status BeginFrame(bool waitForFrameLatency = false);
   dxsplat::Status EndFrame(bool vsync);
   dxsplat::Status WaitForGpu();
+  void NotifyQueueLost();
 
   ID3D12Device* Device() const;
   ID3D12GraphicsCommandList* CommandList() const;
