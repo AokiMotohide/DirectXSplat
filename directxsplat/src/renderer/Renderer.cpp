@@ -34,6 +34,8 @@ constexpr float kHierarchyMidDescendRadius = 18.0f;
 constexpr float kHierarchyNearDescendRadius = 48.0f;
 constexpr uint64_t kMaxResidencySceneGaussians = 64ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxResidencyChunks = 1024ull * 1024ull;
+constexpr uint64_t kDefaultResidencyChunkExpandedBytes = 64ull * 1024ull * 1024ull;
+constexpr uint64_t kMaxResidencyChunkExpandedBytes = 2ull * 1024ull * 1024ull * 1024ull;
 
 RendererConfig SanitizeRendererConfig(RendererConfig config) {
   config.residencyBudgetGaussians = std::clamp<uint64_t>(config.residencyBudgetGaussians, 1, kMaxResidencySceneGaussians);
@@ -125,6 +127,26 @@ Status ValidateResidencySceneInput(const Scene& scene, uint32_t chunkTargetSize)
       }
       totalChunks += setChunks;
     }
+  }
+  return Status::Ok();
+}
+
+Status ValidateResidencyChunkInput(const GaussianSet& chunk, const RendererConfig& config) {
+  const uint64_t count = static_cast<uint64_t>(chunk.gaussians.size());
+  if (count > kMaxResidencySceneGaussians) {
+    return Status::Error("chunk has too many gaussians");
+  }
+  constexpr uint64_t stride = static_cast<uint64_t>(sizeof(Gaussian) + sizeof(Vec3)) * 3ull;
+  if (count > std::numeric_limits<uint64_t>::max() / stride) {
+    return Status::Error("chunk has too many gaussians");
+  }
+  const uint64_t target = std::max<uint32_t>(config.chunkTargetSize, 1);
+  uint64_t budget = kMaxResidencyChunkExpandedBytes;
+  if (target <= std::numeric_limits<uint64_t>::max() / stride) {
+    budget = std::clamp(target * stride, kDefaultResidencyChunkExpandedBytes, kMaxResidencyChunkExpandedBytes);
+  }
+  if (count * stride > budget) {
+    return Status::Error("chunk has too many gaussians");
   }
   return Status::Ok();
 }
@@ -1751,6 +1773,10 @@ class Renderer::Impl {
     if (record == nullptr || !raster.HasScene(token.scene.value)) {
       return Status::Error("uploaded scene handle not found");
     }
+    s = ValidateResidencyChunkInput(chunk, config);
+    if (!s.ok) {
+      return s;
+    }
     const UploadedChunkHandle handle{nextChunkId.fetch_add(1, std::memory_order_relaxed)};
     std::lock_guard<std::mutex> sceneLock(record->mutex);
     ResidencyScene residency = record->templateResidency;
@@ -1797,8 +1823,16 @@ class Renderer::Impl {
       return Status::Error("uploaded scene handle not found");
     }
     std::lock_guard<std::mutex> sceneLock(record->mutex);
+    ResidentChunk* existing = FindResidencyChunk(record->templateResidency, chunkHandle);
+    if (existing == nullptr) {
+      return Status::Error("uploaded chunk handle not found");
+    }
+    s = ValidateResidencyChunkInput(chunk, config);
+    if (!s.ok) {
+      return s;
+    }
     ResidencyScene residency = record->templateResidency;
-    ResidentChunk* existing = FindResidencyChunk(residency, chunkHandle);
+    existing = FindResidencyChunk(residency, chunkHandle);
     if (existing == nullptr) {
       return Status::Error("uploaded chunk handle not found");
     }

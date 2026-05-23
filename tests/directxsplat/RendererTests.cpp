@@ -609,6 +609,22 @@ TEST_CASE("Renderer handles empty scenes and chunk operations") {
   REQUIRE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
   CHECK(chunkInfo.visible);
   CHECK(chunkInfo.scalingModifier == doctest::Approx(0.75f));
+
+  constexpr size_t oversizedChunkCount =
+      static_cast<size_t>((64ull * 1024ull * 1024ull) / ((static_cast<uint64_t>(sizeof(Gaussian)) + sizeof(Vec3)) * 3ull)) + 1u;
+  GaussianSet oversizedChunk = chunk;
+  oversizedChunk.gaussians.assign(oversizedChunkCount, chunk.gaussians.front());
+  UploadedChunkHandle oversizedHandle{};
+  Status oversizedStatus = harness.renderer().AddUploadedChunk(sceneHandle, oversizedChunk, oversizedHandle);
+  CHECK_FALSE(oversizedStatus.ok);
+  CHECK(oversizedStatus.message == "chunk has too many gaussians");
+  CHECK_FALSE(oversizedHandle.IsValid());
+  oversizedStatus = harness.renderer().UpdateUploadedChunk(sceneHandle, chunkHandle, oversizedChunk);
+  CHECK_FALSE(oversizedStatus.ok);
+  CHECK(oversizedStatus.message == "chunk has too many gaussians");
+  REQUIRE(harness.renderer().GetUploadedSceneChunks(sceneHandle, chunkHandles).ok);
+  CHECK(chunkHandles.size() == 1u);
+
   CHECK_FALSE(harness.renderer().RemoveUploadedChunk(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}).ok);
   CHECK_FALSE(harness.renderer().SetUploadedChunkEnabled(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}, true).ok);
   CHECK_FALSE(harness.renderer().SetUploadedChunkScalingModifier(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}, 1.0f).ok);
