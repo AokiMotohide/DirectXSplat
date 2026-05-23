@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "dxsplat_examples/ExampleArgs.h"
+#include "dxsplat_examples/ExampleD3D12.h"
 #include "dxsplat_examples/ExampleRender.h"
 
 namespace dxsplat::examples {
@@ -86,6 +87,30 @@ TEST_CASE("empty scene copy keeps upload format metadata without chunks") {
   CHECK(empty.vramFormat.rgbaFormat == VramAttributeFormat::Float16);
   CHECK(empty.vramFormat.shFormat == VramAttributeFormat::Uint8);
   CHECK(empty.splatSets.empty());
+}
+
+TEST_CASE("example readback rejects malformed target footprints") {
+  D3D12ExampleDevice device;
+  appcommon::ImageRgba8 image;
+  OffscreenTarget target{};
+  target.width = 4;
+  target.height = 4;
+  target.footprint.Footprint.RowPitch = 8;
+  target.readbackSizeBytes = 64;
+  CHECK_FALSE(device.ReadbackImage(target, image).ok);
+  CHECK(image.pixels.empty());
+
+  target.footprint.Footprint.RowPitch = 16;
+  target.readbackSizeBytes = 63;
+  CHECK_FALSE(device.ReadbackImage(target, image).ok);
+  CHECK(image.pixels.empty());
+
+  target.width = UINT32_MAX;
+  target.height = UINT32_MAX;
+  target.footprint.Footprint.RowPitch = UINT32_MAX;
+  target.readbackSizeBytes = UINT64_MAX;
+  CHECK_FALSE(device.ReadbackImage(target, image).ok);
+  CHECK(image.pixels.empty());
 }
 
 }  // namespace

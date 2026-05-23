@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <sstream>
 
 namespace dxsplat::examples {
@@ -344,17 +345,45 @@ Status D3D12ExampleDevice::RecordReadback(const OffscreenTarget& target) {
 
 Status D3D12ExampleDevice::ReadbackImage(const OffscreenTarget& target, appcommon::ImageRgba8& outImage) try {
   outImage = {};
-  if (target.readback == nullptr || target.width == 0 || target.height == 0) {
+  if (target.width == 0 || target.height == 0) {
     return Status::Error("invalid readback target");
   }
 
-  const size_t pixelBytes = static_cast<size_t>(target.width) * target.height * 4u;
+  if (target.width > std::numeric_limits<uint64_t>::max() / 4ull) {
+    return Status::Error("invalid readback target");
+  }
+  const uint64_t rowBytes = static_cast<uint64_t>(target.width) * 4ull;
+  const uint64_t rowPitch = static_cast<uint64_t>(target.footprint.Footprint.RowPitch);
+  if (rowPitch < rowBytes) {
+    return Status::Error("invalid readback target");
+  }
+  if (rowBytes != 0 && target.height > std::numeric_limits<uint64_t>::max() / rowBytes) {
+    return Status::Error("readback image too large");
+  }
+  const uint64_t pixelBytes64 = rowBytes * static_cast<uint64_t>(target.height);
+  if (pixelBytes64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+    return Status::Error("readback image too large");
+  }
+  if (rowPitch != 0 && target.height > std::numeric_limits<uint64_t>::max() / rowPitch) {
+    return Status::Error("invalid readback target");
+  }
+  const uint64_t requiredReadbackBytes = rowPitch * static_cast<uint64_t>(target.height);
+  if (target.readbackSizeBytes < requiredReadbackBytes) {
+    return Status::Error("invalid readback target");
+  }
+  if (requiredReadbackBytes > static_cast<uint64_t>(std::numeric_limits<SIZE_T>::max())) {
+    return Status::Error("invalid readback target");
+  }
+  if (target.readback == nullptr) {
+    return Status::Error("invalid readback target");
+  }
+
   appcommon::ImageRgba8 image{};
   image.width = target.width;
   image.height = target.height;
-  image.pixels.resize(pixelBytes);
+  image.pixels.resize(static_cast<size_t>(pixelBytes64));
 
-  D3D12_RANGE readRange{0, static_cast<SIZE_T>(target.readbackSizeBytes)};
+  D3D12_RANGE readRange{0, static_cast<SIZE_T>(requiredReadbackBytes)};
   void* mapped = nullptr;
   HRESULT hr = target.readback->Map(0, &readRange, &mapped);
   if (FAILED(hr) || mapped == nullptr) {
@@ -363,8 +392,8 @@ Status D3D12ExampleDevice::ReadbackImage(const OffscreenTarget& target, appcommo
 
   const auto* src = static_cast<const uint8_t*>(mapped);
   for (uint32_t y = 0; y < target.height; ++y) {
-    const uint8_t* row = src + static_cast<size_t>(target.footprint.Footprint.RowPitch) * y;
-    std::memcpy(image.pixels.data() + static_cast<size_t>(target.width) * y * 4u, row, static_cast<size_t>(target.width) * 4u);
+    const uint8_t* row = src + static_cast<size_t>(rowPitch) * y;
+    std::memcpy(image.pixels.data() + static_cast<size_t>(rowBytes) * y, row, static_cast<size_t>(rowBytes));
   }
 
   D3D12_RANGE writeRange{0, 0};
