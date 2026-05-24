@@ -489,7 +489,26 @@ class Renderer::Impl {
     bool visible = true;
     bool resident = false;
     int residentLod = -1;
+    bool residentEnabled = false;
     uint64_t lastUsedFrame = 0;
+  };
+
+  enum class ResidencyApplyKind {
+    Add,
+    Update,
+    Remove,
+    Enable,
+  };
+
+  struct ResidencyApplyStep {
+    ResidencyApplyKind kind = ResidencyApplyKind::Enable;
+    size_t chunkIndex = 0;
+    int targetLod = -1;
+    bool targetEnabled = false;
+    bool previousResident = false;
+    int previousLod = -1;
+    bool previousEnabled = false;
+    uint64_t previousLastUsedFrame = 0;
   };
 
   struct ResidencyNode {
@@ -916,6 +935,7 @@ class Renderer::Impl {
     for (ResidentChunk& chunk : instance->residency.chunks) {
       chunk.resident = false;
       chunk.residentLod = -1;
+      chunk.residentEnabled = false;
       chunk.lastUsedFrame = 0;
     }
     instance->prepared.sceneVersion = sceneVersion;
@@ -2168,40 +2188,170 @@ class Renderer::Impl {
     const std::vector<int>& selectedLods = instance.prepared.selectedLods;
     const size_t count = std::min(selectedLods.size(), residency.chunks.size());
     for (size_t i = 0; i < count; ++i) {
-      if (selectedLods[i] >= 0) {
+      if (selectedLods[i] >= 0 && residency.chunks[i].resident) {
         residency.chunks[i].lastUsedFrame = residency.frameIndex;
       }
     }
   }
 
+  Status RestoreResidencyStep(uint64_t rasterSceneId, ResidencyScene& residency, const ResidencyApplyStep& step) {
+    if (step.chunkIndex >= residency.chunks.size()) {
+      return Status::Error("invalid residency rollback step");
+    }
+    ResidentChunk& chunk = residency.chunks[step.chunkIndex];
+    Status status = Status::Ok();
+    if (step.previousResident && step.previousLod >= 0) {
+      if (step.kind == ResidencyApplyKind::Add) {
+        status = raster.RemoveChunk(rasterSceneId, chunk.handle.value);
+        if (!status.ok) {
+          return status;
+        }
+        status = raster.AddChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(step.previousLod)]);
+      } else if (step.kind == ResidencyApplyKind::Remove) {
+        status = raster.AddChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(step.previousLod)]);
+      } else if (step.kind == ResidencyApplyKind::Update) {
+        status = raster.UpdateChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(step.previousLod)]);
+      }
+      if (!status.ok) {
+        return status;
+      }
+      status = raster.SetChunkEnabled(rasterSceneId, chunk.handle.value, step.previousEnabled);
+      if (!status.ok) {
+        return status;
+      }
+    } else if (step.kind != ResidencyApplyKind::Remove) {
+      status = raster.RemoveChunk(rasterSceneId, chunk.handle.value);
+      if (!status.ok) {
+        return status;
+      }
+    }
+    chunk.resident = step.previousResident;
+    chunk.residentLod = step.previousLod;
+    chunk.residentEnabled = step.previousEnabled;
+    chunk.lastUsedFrame = step.previousLastUsedFrame;
+    return Status::Ok();
+  }
+
+  Status ApplyResidencyStep(uint64_t rasterSceneId, ResidencyScene& residency, const ResidencyApplyStep& step) {
+    if (step.chunkIndex >= residency.chunks.size() || step.targetLod < -1 || step.targetLod > 2) {
+      return Status::Error("invalid residency apply step");
+    }
+    ResidentChunk& chunk = residency.chunks[step.chunkIndex];
+    Status status = Status::Ok();
+    switch (step.kind) {
+      case ResidencyApplyKind::Add:
+        if (step.targetLod < 0) {
+          return Status::Error("invalid residency apply step");
+        }
+        status = raster.AddChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(step.targetLod)]);
+        if (!status.ok) {
+          return status;
+        }
+        status = raster.SetChunkEnabled(rasterSceneId, chunk.handle.value, step.targetEnabled);
+        if (!status.ok) {
+          Status restored = RestoreResidencyStep(rasterSceneId, residency, step);
+          return restored.ok ? status : restored;
+        }
+        chunk.resident = true;
+        chunk.residentLod = step.targetLod;
+        chunk.residentEnabled = step.targetEnabled;
+        return Status::Ok();
+      case ResidencyApplyKind::Update:
+        if (step.targetLod < 0) {
+          return Status::Error("invalid residency apply step");
+        }
+        status = raster.UpdateChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(step.targetLod)]);
+        if (!status.ok) {
+          return status;
+        }
+        status = raster.SetChunkEnabled(rasterSceneId, chunk.handle.value, step.targetEnabled);
+        if (!status.ok) {
+          Status restored = RestoreResidencyStep(rasterSceneId, residency, step);
+          return restored.ok ? status : restored;
+        }
+        chunk.resident = true;
+        chunk.residentLod = step.targetLod;
+        chunk.residentEnabled = step.targetEnabled;
+        return Status::Ok();
+      case ResidencyApplyKind::Remove:
+        status = raster.RemoveChunk(rasterSceneId, chunk.handle.value);
+        if (!status.ok) {
+          return status;
+        }
+        chunk.resident = false;
+        chunk.residentLod = -1;
+        chunk.residentEnabled = false;
+        return Status::Ok();
+      case ResidencyApplyKind::Enable:
+        status = raster.SetChunkEnabled(rasterSceneId, chunk.handle.value, step.targetEnabled);
+        if (!status.ok) {
+          return status;
+        }
+        chunk.residentEnabled = step.targetEnabled;
+        return Status::Ok();
+    }
+    return Status::Error("invalid residency apply step");
+  }
+
+  Status RollbackResidencySteps(uint64_t rasterSceneId,
+                                ResidencyScene& residency,
+                                const std::vector<ResidencyApplyStep>& steps,
+                                size_t appliedCount,
+                                uint64_t previousFrameIndex) {
+    Status firstFailure = Status::Ok();
+    for (size_t i = appliedCount; i > 0; --i) {
+      Status restored = RestoreResidencyStep(rasterSceneId, residency, steps[i - 1]);
+      if (!restored.ok && firstFailure.ok) {
+        firstFailure = restored;
+      }
+    }
+    residency.frameIndex = previousFrameIndex;
+    return firstFailure;
+  }
+
   Status ApplyPreparedResidency(uint64_t rasterSceneId, ResidencyInstanceRecord& instance, FrameStats& stats) {
     ResidencyScene& residency = instance.residency;
     PreparedResidencyState& prepared = instance.prepared;
-    residency.frameIndex++;
+    const uint64_t previousFrameIndex = residency.frameIndex;
+    const uint64_t nextFrameIndex = previousFrameIndex + 1;
 
     const std::vector<int>& selectedLods = prepared.selectedLods;
     const std::vector<int>& cacheLods = prepared.cacheLods;
     const uint64_t uploadBudget =
-        residency.frameIndex <= 3 ? config.uploadBudgetGaussians : config.warmUploadBudgetGaussians;
+        nextFrameIndex <= 3 ? config.uploadBudgetGaussians : config.warmUploadBudgetGaussians;
 
     uint64_t uploads = 0;
     uint64_t evictions = 0;
     uint64_t uploadCost = 0;
     bool syncComplete = true;
+    std::vector<ResidencyApplyStep> steps;
+    steps.reserve(residency.chunks.size());
 
     for (size_t i = 0; i < residency.chunks.size(); ++i) {
       ResidentChunk& chunk = residency.chunks[i];
       const int desiredLod = i < selectedLods.size() ? selectedLods[i] : -1;
       const int cacheLod = i < cacheLods.size() ? cacheLods[i] : -1;
       int targetLod = desiredLod >= 0 ? desiredLod : cacheLod;
+      const bool targetEnabled = desiredLod >= 0;
+      bool finalResident = chunk.resident;
+      int finalLod = chunk.residentLod;
+      const auto makeStep = [&](ResidencyApplyKind kind, int lod, bool enabled) {
+        ResidencyApplyStep step{};
+        step.kind = kind;
+        step.chunkIndex = i;
+        step.targetLod = lod;
+        step.targetEnabled = enabled;
+        step.previousResident = chunk.resident;
+        step.previousLod = chunk.residentLod;
+        step.previousEnabled = chunk.residentEnabled;
+        step.previousLastUsedFrame = chunk.lastUsedFrame;
+        return step;
+      };
       if (targetLod < 0) {
         if (chunk.resident) {
-          Status remove = raster.RemoveChunk(rasterSceneId, chunk.handle.value);
-          if (!remove.ok) {
-            return remove;
-          }
-          chunk.resident = false;
-          chunk.residentLod = -1;
+          steps.push_back(makeStep(ResidencyApplyKind::Remove, -1, false));
+          finalResident = false;
+          finalLod = -1;
           evictions++;
         }
         continue;
@@ -2213,12 +2363,9 @@ class Renderer::Impl {
           syncComplete = false;
           continue;
         }
-        Status add = raster.AddChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(targetLod)]);
-        if (!add.ok) {
-          return add;
-        }
-        chunk.resident = true;
-        chunk.residentLod = targetLod;
+        steps.push_back(makeStep(ResidencyApplyKind::Add, targetLod, targetEnabled));
+        finalResident = true;
+        finalLod = targetLod;
         uploads++;
         uploadCost += cost;
       } else if (chunk.residentLod != targetLod) {
@@ -2227,28 +2374,39 @@ class Renderer::Impl {
           syncComplete = false;
           targetLod = chunk.residentLod;
         } else {
-          Status update = raster.UpdateChunk(rasterSceneId, chunk.handle.value, chunk.lods[static_cast<size_t>(targetLod)]);
-          if (!update.ok) {
-            return update;
-          }
-          chunk.residentLod = targetLod;
+          steps.push_back(makeStep(ResidencyApplyKind::Update, targetLod, targetEnabled));
+          finalResident = true;
+          finalLod = targetLod;
           uploads++;
           uploadCost += cost;
         }
       }
 
-      Status enable = raster.SetChunkEnabled(rasterSceneId, chunk.handle.value, desiredLod >= 0);
-      if (!enable.ok) {
-        return enable;
+      if (chunk.resident && chunk.residentLod == targetLod && chunk.residentEnabled != targetEnabled) {
+        steps.push_back(makeStep(ResidencyApplyKind::Enable, targetLod, targetEnabled));
       }
-      if (desiredLod >= 0) {
-        chunk.lastUsedFrame = residency.frameIndex;
-      }
-      if (!chunk.resident || chunk.residentLod != targetLod) {
+      if (!finalResident || finalLod != targetLod) {
         syncComplete = false;
       }
     }
 
+    residency.frameIndex = nextFrameIndex;
+    size_t appliedCount = 0;
+    for (const ResidencyApplyStep& step : steps) {
+      Status applied = ApplyResidencyStep(rasterSceneId, residency, step);
+      if (!applied.ok) {
+        Status rolledBack = RollbackResidencySteps(rasterSceneId, residency, steps, appliedCount, previousFrameIndex);
+        return rolledBack.ok ? applied : rolledBack;
+      }
+      ++appliedCount;
+    }
+    const size_t selectedCount = std::min(selectedLods.size(), residency.chunks.size());
+    for (size_t i = 0; i < selectedCount; ++i) {
+      ResidentChunk& chunk = residency.chunks[i];
+      if (selectedLods[i] >= 0 && chunk.resident) {
+        chunk.lastUsedFrame = residency.frameIndex;
+      }
+    }
     prepared.syncComplete = syncComplete;
     stats.streamedUploads += uploads;
     stats.streamedEvictions += evictions;
