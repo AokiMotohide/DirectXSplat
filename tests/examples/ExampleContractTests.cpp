@@ -98,11 +98,13 @@ TEST_CASE("example readback rejects malformed target footprints") {
   target.footprint.Footprint.RowPitch = 8;
   target.readbackSizeBytes = 64;
   CHECK_FALSE(device.ReadbackImage(target, image).ok);
+  CHECK_FALSE(device.RecordReadback(target).ok);
   CHECK(image.pixels.empty());
 
   target.footprint.Footprint.RowPitch = 16;
   target.readbackSizeBytes = 63;
   CHECK_FALSE(device.ReadbackImage(target, image).ok);
+  CHECK_FALSE(device.RecordReadback(target).ok);
   CHECK(image.pixels.empty());
 
   target.width = UINT32_MAX;
@@ -110,6 +112,7 @@ TEST_CASE("example readback rejects malformed target footprints") {
   target.footprint.Footprint.RowPitch = UINT32_MAX;
   target.readbackSizeBytes = UINT64_MAX;
   CHECK_FALSE(device.ReadbackImage(target, image).ok);
+  CHECK_FALSE(device.RecordReadback(target).ok);
   CHECK(image.pixels.empty());
 }
 
