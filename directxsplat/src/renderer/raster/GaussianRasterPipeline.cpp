@@ -2322,8 +2322,6 @@ void GaussianRasterPipeline::ReleaseRenderScratch(UploadedSceneRuntime& runtime,
     scratch->inFlightFenceValue = frameContext->submissionFenceValue;
     scratch->inFlightNext = runtime.inFlightScratchHead;
     runtime.inFlightScratchHead = scratch.get();
-  } else {
-    runtime.retainedScratch.push_back(std::move(scratch));
   }
 }
 
