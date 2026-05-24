@@ -36,6 +36,13 @@ std::string WideToUtf8(const wchar_t* text) {
   return out;
 }
 
+bool IsDeviceRemovalFailure(HRESULT hr) {
+  return hr == DXGI_ERROR_DEVICE_REMOVED ||
+         hr == DXGI_ERROR_DEVICE_RESET ||
+         hr == DXGI_ERROR_DEVICE_HUNG ||
+         hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
+}
+
 }  
 
 dxsplat::Status SwapchainContext::Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer) {
@@ -399,6 +406,9 @@ dxsplat::Status SwapchainContext::EndFrame(bool vsync) {
   hr = swapchain_->Present(vsync ? 1 : 0, 0);
   if (FAILED(hr)) {
     HRESULT removed = device_ != nullptr ? device_->GetDeviceRemovedReason() : S_OK;
+    if (IsDeviceRemovalFailure(hr) || IsDeviceRemovalFailure(removed)) {
+      queueLost_ = true;
+    }
     return dxsplat::Status::Error("Present failed " + HrString(hr) + " removed=" + HrString(removed) + DebugMessages());
   }
 
