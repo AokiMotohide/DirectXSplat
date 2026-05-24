@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <utility>
@@ -22,6 +23,42 @@ struct MappedReadback {
     }
   }
 };
+
+Status ValidateCaptureLayout(uint32_t width,
+                             uint32_t height,
+                             uint32_t rowPitch,
+                             uint64_t readbackSizeBytes,
+                             size_t* outRowBytes = nullptr,
+                             size_t* outPixelBytes = nullptr) {
+  if (width == 0 || height == 0 || rowPitch == 0 || readbackSizeBytes == 0) {
+    return Status::Error("invalid pending screenshot capture");
+  }
+  constexpr uint64_t kBytesPerPixel = 4;
+  const uint64_t rowBytes = static_cast<uint64_t>(width) * kBytesPerPixel;
+  if (rowBytes > rowPitch) {
+    return Status::Error("invalid screenshot readback layout");
+  }
+  if (height > std::numeric_limits<uint64_t>::max() / rowPitch ||
+      height > std::numeric_limits<uint64_t>::max() / rowBytes) {
+    return Status::Error("screenshot readback layout is too large");
+  }
+  const uint64_t requiredReadbackBytes = static_cast<uint64_t>(rowPitch) * height;
+  const uint64_t pixelBytes = rowBytes * height;
+  if (readbackSizeBytes < requiredReadbackBytes) {
+    return Status::Error("invalid screenshot readback layout");
+  }
+  if (rowBytes > std::numeric_limits<size_t>::max() || pixelBytes > std::numeric_limits<size_t>::max() ||
+      requiredReadbackBytes > std::numeric_limits<size_t>::max()) {
+    return Status::Error("screenshot readback layout is too large");
+  }
+  if (outRowBytes != nullptr) {
+    *outRowBytes = static_cast<size_t>(rowBytes);
+  }
+  if (outPixelBytes != nullptr) {
+    *outPixelBytes = static_cast<size_t>(pixelBytes);
+  }
+  return Status::Ok();
+}
 
 }
 
@@ -54,6 +91,16 @@ Status ScreenshotWriter::QueueBackBufferPpm(appcommon::SwapchainContext& context
   if (totalBytes == 0 || rowCount == 0) {
     return Status::Error("failed to compute screenshot copy layout");
   }
+  if (srcDesc.Width > std::numeric_limits<uint32_t>::max() || srcDesc.Height > std::numeric_limits<uint32_t>::max()) {
+    return Status::Error("screenshot dimensions are too large");
+  }
+  Status layoutStatus = ValidateCaptureLayout(static_cast<uint32_t>(srcDesc.Width),
+                                              static_cast<uint32_t>(srcDesc.Height),
+                                              footprint.Footprint.RowPitch,
+                                              totalBytes);
+  if (!layoutStatus.ok) {
+    return layoutStatus;
+  }
 
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_READBACK;
@@ -62,7 +109,7 @@ Status ScreenshotWriter::QueueBackBufferPpm(appcommon::SwapchainContext& context
 
   D3D12_RESOURCE_DESC readbackDesc{};
   readbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  readbackDesc.Width = std::max<UINT64>(totalBytes, 4u);
+  readbackDesc.Width = std::max<UINT64>(totalBytes, 4ull);
   readbackDesc.Height = 1;
   readbackDesc.DepthOrArraySize = 1;
   readbackDesc.MipLevels = 1;
@@ -83,6 +130,7 @@ Status ScreenshotWriter::QueueBackBufferPpm(appcommon::SwapchainContext& context
   pending.width = static_cast<uint32_t>(srcDesc.Width);
   pending.height = static_cast<uint32_t>(srcDesc.Height);
   pending.rowPitch = footprint.Footprint.RowPitch;
+  pending.readbackSizeBytes = totalBytes;
   try {
     pending.outputPath = outputPath;
   } catch (const std::bad_alloc&) {
@@ -130,9 +178,21 @@ Status ScreenshotWriter::ResolvePendingCapture(std::string* completedPath) {
   }
 
   if (pending_.readback == nullptr || pending_.width == 0 || pending_.height == 0 || pending_.rowPitch == 0 ||
-      pending_.outputPath.empty() || pending_.fence == nullptr || pending_.fenceValue == 0) {
+      pending_.readbackSizeBytes == 0 || pending_.outputPath.empty() || pending_.fence == nullptr || pending_.fenceValue == 0) {
     pending_ = {};
     return Status::Error("invalid pending screenshot capture");
+  }
+  size_t rowBytes = 0;
+  size_t pixelBytes = 0;
+  Status layoutStatus = ValidateCaptureLayout(pending_.width,
+                                              pending_.height,
+                                              pending_.rowPitch,
+                                              pending_.readbackSizeBytes,
+                                              &rowBytes,
+                                              &pixelBytes);
+  if (!layoutStatus.ok) {
+    pending_ = {};
+    return layoutStatus;
   }
   if (pending_.fence->GetCompletedValue() < pending_.fenceValue) {
     return Status::Ok();
@@ -152,12 +212,12 @@ Status ScreenshotWriter::ResolvePendingCapture(std::string* completedPath) {
   {
     MappedReadback mappedReadback{pending_.readback.Get()};
     try {
-      image.pixels.resize(static_cast<size_t>(image.width) * image.height * 4u);
+      image.pixels.resize(pixelBytes);
       const uint8_t* src = reinterpret_cast<const uint8_t*>(mapped);
       for (uint32_t y = 0; y < image.height; ++y) {
         const uint8_t* srcRow = src + static_cast<size_t>(y) * pending_.rowPitch;
-        uint8_t* dstRow = image.pixels.data() + static_cast<size_t>(y) * image.width * 4u;
-        std::memcpy(dstRow, srcRow, static_cast<size_t>(image.width) * 4u);
+        uint8_t* dstRow = image.pixels.data() + static_cast<size_t>(y) * rowBytes;
+        std::memcpy(dstRow, srcRow, rowBytes);
       }
     } catch (const std::bad_alloc&) {
       copyStatus = Status::Error("screenshot allocation failed");
