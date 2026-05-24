@@ -302,6 +302,45 @@ TEST_CASE("raw PLY reader rejects scalar storage above fallback budget") {
   std::filesystem::remove_all(dir, ec);
 }
 
+TEST_CASE("raw PLY reader rejects oversized header token lists") {
+  const std::filesystem::path dir = MakeTempDir("directxsplat_raw_ply_header_tokens");
+  const std::filesystem::path path = dir / "many_header_tokens.ply";
+  std::string line = "unknown";
+  for (int i = 0; i < 32; ++i) {
+    line += " t";
+  }
+  WriteText(path,
+            "ply\n"
+            "format ascii 1.0\n" +
+                line +
+                "\n"
+                "end_header\n");
+
+  auto raw = io::ply::ReadPlyFile(path.string());
+  CHECK_FALSE(raw.ok());
+  CHECK(raw.status.message == "ply header line has too many tokens");
+
+  const std::filesystem::path commentPath = dir / "long_comment.ply";
+  std::string comment = "comment";
+  for (int i = 0; i < 32; ++i) {
+    comment += " word";
+  }
+  WriteText(commentPath,
+            "ply\n"
+            "format ascii 1.0\n" +
+                comment +
+                "\n"
+                "element vertex 0\n"
+                "property float x\n"
+                "end_header\n");
+
+  raw = io::ply::ReadPlyFile(commentPath.string());
+  CHECK(raw.ok());
+
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+}
+
 TEST_CASE("SOG metadata schema variants fail through StatusOr instead of exceptions") {
   const std::filesystem::path dir = MakeTempDir("directxsplat_sog_schema_matrix");
 

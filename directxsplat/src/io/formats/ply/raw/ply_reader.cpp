@@ -8,7 +8,6 @@
 #include <fstream>
 #include <limits>
 #include <new>
-#include <sstream>
 #include <stdexcept>
 #include <string_view>
 
@@ -21,9 +20,10 @@ constexpr uint32_t kMaxPlyProperties = 4096;
 constexpr uint64_t kMaxPlyFileBytes = 256ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxPlyScalarBytes = 256ull * 1024ull * 1024ull;
 constexpr size_t kMaxPlyHeaderLineBytes = 1024ull * 1024ull;
+constexpr size_t kMaxPlyHeaderTokens = 16;
 constexpr size_t kMaxAsciiPlyTokenBytes = 4096;
 
-std::string Trim(const std::string& s) {
+std::string_view TrimView(std::string_view s) {
   size_t b = 0;
   while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) {
     ++b;
@@ -35,14 +35,30 @@ std::string Trim(const std::string& s) {
   return s.substr(b, e - b);
 }
 
-std::vector<std::string> SplitBySpaces(const std::string& s) {
-  std::vector<std::string> out;
-  std::string item;
-  std::istringstream in(s);
-  while (in >> item) {
-    out.push_back(item);
+StatusOr<std::vector<std::string_view>> SplitHeaderTokens(std::string_view s) {
+  std::vector<std::string_view> out;
+  size_t cursor = 0;
+  while (cursor < s.size()) {
+    while (cursor < s.size() && std::isspace(static_cast<unsigned char>(s[cursor]))) {
+      ++cursor;
+    }
+    if (cursor >= s.size()) {
+      break;
+    }
+    const size_t start = cursor;
+    while (cursor < s.size() && !std::isspace(static_cast<unsigned char>(s[cursor]))) {
+      ++cursor;
+    }
+    const size_t size = cursor - start;
+    if (size > kMaxAsciiPlyTokenBytes) {
+      return StatusOr<std::vector<std::string_view>>::Error("ply header token too large");
+    }
+    if (out.size() >= kMaxPlyHeaderTokens) {
+      return StatusOr<std::vector<std::string_view>>::Error("ply header line has too many tokens");
+    }
+    out.push_back(s.substr(start, size));
   }
-  return out;
+  return StatusOr<std::vector<std::string_view>>::Ok(std::move(out));
 }
 
 std::string ToLower(std::string s) {
@@ -50,20 +66,45 @@ std::string ToLower(std::string s) {
   return s;
 }
 
-StatusOr<uint32_t> ParseUint32(const std::string& s) {
-  if (s.empty() || s[0] == '-') {
+bool EqualsLower(std::string_view a, std::string_view b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+StatusOr<uint32_t> ParseUint32(std::string_view s) {
+  if (s.empty()) {
     return StatusOr<uint32_t>::Error("invalid element count");
   }
-  try {
-    size_t consumed = 0;
-    const unsigned long value = std::stoul(s, &consumed);
-    if (consumed != s.size() || value > std::numeric_limits<uint32_t>::max()) {
+  uint64_t value = 0;
+  for (char c : s) {
+    if (c < '0' || c > '9') {
       return StatusOr<uint32_t>::Error("invalid element count");
     }
-    return StatusOr<uint32_t>::Ok(static_cast<uint32_t>(value));
-  } catch (...) {
-    return StatusOr<uint32_t>::Error("invalid element count");
+    value = value * 10ull + static_cast<uint64_t>(c - '0');
+    if (value > std::numeric_limits<uint32_t>::max()) {
+      return StatusOr<uint32_t>::Error("invalid element count");
+    }
   }
+  return StatusOr<uint32_t>::Ok(static_cast<uint32_t>(value));
+}
+
+PlyScalarType ParseScalarTypeToken(std::string_view token) {
+  if (EqualsLower(token, "char") || EqualsLower(token, "int8")) return PlyScalarType::Int8;
+  if (EqualsLower(token, "uchar") || EqualsLower(token, "uint8")) return PlyScalarType::UInt8;
+  if (EqualsLower(token, "short") || EqualsLower(token, "int16")) return PlyScalarType::Int16;
+  if (EqualsLower(token, "ushort") || EqualsLower(token, "uint16")) return PlyScalarType::UInt16;
+  if (EqualsLower(token, "int") || EqualsLower(token, "int32")) return PlyScalarType::Int32;
+  if (EqualsLower(token, "uint") || EqualsLower(token, "uint32")) return PlyScalarType::UInt32;
+  if (EqualsLower(token, "float") || EqualsLower(token, "float32")) return PlyScalarType::Float32;
+  if (EqualsLower(token, "double") || EqualsLower(token, "float64")) return PlyScalarType::Float64;
+  return PlyScalarType::Unknown;
 }
 
 bool IsIntegerScalarType(PlyScalarType type) {
@@ -276,7 +317,7 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
     }
     return StatusOr<PlyFile>::Error("invalid ply magic");
   }
-  if (Trim(line) != "ply") {
+  if (TrimView(line) != "ply") {
     return StatusOr<PlyFile>::Error("invalid ply magic");
   }
 
@@ -285,7 +326,7 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
   bool headerEnded = false;
 
   while (readLine(line)) {
-    const std::string trimmed = Trim(line);
+    const std::string_view trimmed = TrimView(line);
     if (trimmed.empty()) {
       continue;
     }
@@ -294,15 +335,23 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
       break;
     }
 
-    const std::vector<std::string> tokens = SplitBySpaces(trimmed);
-    if (tokens.empty()) {
+    if (trimmed == "comment" || (trimmed.size() > 8 && trimmed.substr(0, 8) == "comment ")) {
+      if (trimmed.size() > 8) {
+        ply.comments.emplace_back(std::string(trimmed.substr(8)));
+      }
       continue;
     }
 
-    if (tokens[0] == "comment") {
-      if (trimmed.size() > 8) {
-        ply.comments.emplace_back(trimmed.substr(8));
-      }
+    if (trimmed == "obj_info" || (trimmed.size() > 9 && trimmed.substr(0, 9) == "obj_info ")) {
+      continue;
+    }
+
+    const StatusOr<std::vector<std::string_view>> split = SplitHeaderTokens(trimmed);
+    if (!split.ok()) {
+      return StatusOr<PlyFile>::Error(split.status.message);
+    }
+    const std::vector<std::string_view>& tokens = split.value;
+    if (tokens.empty()) {
       continue;
     }
 
@@ -310,10 +359,9 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
       if (tokens.size() < 3) {
         return StatusOr<PlyFile>::Error("invalid format line");
       }
-      const std::string f = ToLower(tokens[1]);
-      if (f == "ascii") {
+      if (EqualsLower(tokens[1], "ascii")) {
         ply.format = PlyFormat::Ascii;
-      } else if (f == "binary_little_endian") {
+      } else if (EqualsLower(tokens[1], "binary_little_endian")) {
         ply.format = PlyFormat::BinaryLittleEndian;
       } else {
         return StatusOr<PlyFile>::Error("unsupported ply format");
@@ -327,7 +375,7 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
         return StatusOr<PlyFile>::Error("invalid element line");
       }
       PlyElement elem{};
-      elem.name = tokens[1];
+      elem.name = std::string(tokens[1]);
       const auto count = ParseUint32(tokens[2]);
       if (!count.ok()) {
         return StatusOr<PlyFile>::Error(count.status.message);
@@ -351,9 +399,9 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
       PlyProperty prop{};
       if (tokens.size() >= 5 && tokens[1] == "list") {
         prop.isList = true;
-        prop.listCountType = ParseScalarType(tokens[2]);
-        prop.listValueType = ParseScalarType(tokens[3]);
-        prop.name = tokens[4];
+        prop.listCountType = ParseScalarTypeToken(tokens[2]);
+        prop.listValueType = ParseScalarTypeToken(tokens[3]);
+        prop.name = std::string(tokens[4]);
         if (ScalarTypeSize(prop.listCountType) == 0 || ScalarTypeSize(prop.listValueType) == 0) {
           return StatusOr<PlyFile>::Error("unsupported scalar type");
         }
@@ -361,8 +409,8 @@ StatusOr<PlyFile> ParsePlyBytes(const std::vector<uint8_t>& bytes) try {
           return StatusOr<PlyFile>::Error("unsupported ply list count type");
         }
       } else if (tokens.size() >= 3) {
-        prop.type = ParseScalarType(tokens[1]);
-        prop.name = tokens[2];
+        prop.type = ParseScalarTypeToken(tokens[1]);
+        prop.name = std::string(tokens[2]);
         if (ScalarTypeSize(prop.type) == 0) {
           return StatusOr<PlyFile>::Error("unsupported scalar type");
         }
