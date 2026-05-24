@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
   }
 
   UploadedSceneGpuResources resources{};
-  status = renderer.GetUploadedSceneGpuResources(sceneHandle, frameContext, resources);
+  status = renderer.AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources);
   if (!status.ok) {
     std::cerr << status.message << "\n";
     return 1;

@@ -1636,7 +1636,8 @@ class Renderer::Impl {
 
   Status GetUploadedSceneGpuResources(UploadedSceneHandle sceneHandle,
                                       const RenderFrameContext& frameContext,
-                                      UploadedSceneGpuResources& outResources) {
+                                      UploadedSceneGpuResources& outResources,
+                                      bool acquireLease) {
     outResources = {};
     if (!sceneHandle.IsValid()) {
       return Status::Error("invalid uploaded scene handle");
@@ -1653,7 +1654,7 @@ class Renderer::Impl {
       return Status::Error("uploaded scene handle not found");
     }
 
-    Status gpuStatus = raster.GetSceneGpuResources(sceneHandle.value, &frameContext, outResources);
+    Status gpuStatus = raster.GetSceneGpuResources(sceneHandle.value, &frameContext, acquireLease, outResources);
     if (!gpuStatus.ok) {
       return gpuStatus;
     }
@@ -1669,8 +1670,10 @@ class Renderer::Impl {
           chunkResources.residentLod = residencyChunk->resident ? residencyChunk->residentLod : -1;
         }
       }
-      primary->inFlightFence = frameContext.fence;
-      primary->inFlightFenceValue = frameContext.submissionFenceValue;
+      if (acquireLease) {
+        primary->inFlightFence = frameContext.fence;
+        primary->inFlightFenceValue = frameContext.submissionFenceValue;
+      }
     }
     return Status::Ok();
   }
@@ -2688,7 +2691,16 @@ Status Renderer::GetUploadedSceneGpuResources(UploadedSceneHandle sceneHandle,
   if (impl_ == nullptr || !impl_->IsInitialized()) {
     return Status::Error("renderer is not initialized");
   }
-  return impl_->GetUploadedSceneGpuResources(sceneHandle, frameContext, outResources);
+  return impl_->GetUploadedSceneGpuResources(sceneHandle, frameContext, outResources, false);
+}
+
+Status Renderer::AcquireUploadedSceneGpuResources(UploadedSceneHandle sceneHandle,
+                                                  const RenderFrameContext& frameContext,
+                                                  UploadedSceneGpuResources& outResources) {
+  if (impl_ == nullptr || !impl_->IsInitialized()) {
+    return Status::Error("renderer is not initialized");
+  }
+  return impl_->GetUploadedSceneGpuResources(sceneHandle, frameContext, outResources, true);
 }
 
 Status Renderer::PrepareSceneForRender(UploadedSceneHandle sceneHandle,

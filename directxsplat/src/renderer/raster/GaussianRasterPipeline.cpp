@@ -2703,6 +2703,7 @@ Status GaussianRasterPipeline::GetChunkGpuResources(uint64_t sceneId,
 
 Status GaussianRasterPipeline::GetSceneGpuResources(uint64_t sceneId,
                                                     const RenderFrameContext* frameContext,
+                                                    bool acquireLease,
                                                     UploadedSceneGpuResources& out) try {
   out = {};
   Status frameStatus = ValidateRenderFrameContext(frameContext);
@@ -2778,10 +2779,12 @@ Status GaussianRasterPipeline::GetSceneGpuResources(uint64_t sceneId,
       runtime->directQueueUploadWaitValue = std::max(runtime->directQueueUploadWaitValue, pendingUploadFenceValue);
     }
   }
-  RecordDirectQueueSubmission(frameContext);
-  out.leaseFence = frameContext->fence;
-  out.leaseFenceValue = frameContext->submissionFenceValue;
-  out.submission.submissionRequired = true;
+  if (acquireLease) {
+    RecordDirectQueueSubmission(frameContext);
+    out.leaseFence = frameContext->fence;
+    out.leaseFenceValue = frameContext->submissionFenceValue;
+    out.submission.submissionRequired = true;
+  }
   return Status::Ok();
 } catch (const std::bad_alloc&) {
   out = {};

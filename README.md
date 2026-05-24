@@ -211,7 +211,7 @@ Available chunk operations:
 
 ```cpp
 dxsplat::UploadedSceneGpuResources resources{};
-status = renderer.GetUploadedSceneGpuResources(sceneHandle, frameContext, resources);
+status = renderer.AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources);
 if (!status.ok) return status;
 
 if (resources.submission.uploadSyncPoint.IsValid()) {
@@ -222,6 +222,7 @@ directQueue->Signal(resources.leaseFence, resources.leaseFenceValue);
 ```
 
 Returned resources are renderer-owned. Respect `callerMayTransition`, and do not cache raw resource pointers beyond the lease.
+Use `GetUploadedSceneGpuResources` only for a non-leasing snapshot; use `AcquireUploadedSceneGpuResources` before recording external GPU work that references the returned resources.
 
 ## Examples
 

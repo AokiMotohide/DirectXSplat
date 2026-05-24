@@ -531,6 +531,7 @@ TEST_CASE("Renderer public APIs fail cleanly before initialization") {
   CHECK_FALSE(renderer.GetUploadedSceneInfo(sceneHandle, sceneInfo).ok);
   CHECK_FALSE(renderer.GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
   CHECK_FALSE(renderer.GetUploadedSceneGpuResources(sceneHandle, RenderFrameContext{}, gpuResources).ok);
+  CHECK_FALSE(renderer.AcquireUploadedSceneGpuResources(sceneHandle, RenderFrameContext{}, gpuResources).ok);
   CHECK_FALSE(renderer.PrepareSceneForRender(sceneHandle, input, RenderFrameContext{}, &preparation).ok);
   CHECK_FALSE(renderer.BeginSceneMutation(sceneHandle, token).ok);
   CHECK_FALSE(renderer.EndSceneMutation(token).ok);
@@ -707,7 +708,7 @@ TEST_CASE("Renderer reports dirty render errors as requiring submission") {
   CHECK(harness.renderer().Reset().ok);
 }
 
-TEST_CASE("Renderer GPU resource export requires a lease and returns non-transitionable scene resources") {
+TEST_CASE("Renderer GPU resource snapshot does not publish a direct fence lease") {
   RenderHarness harness;
   const Status init = harness.Initialize();
   if (!init.ok) {
@@ -730,9 +731,9 @@ TEST_CASE("Renderer GPU resource export requires a lease and returns non-transit
   resources = {};
   REQUIRE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
   CHECK(resources.scene == sceneHandle);
-  CHECK(resources.leaseFence == frameContext.fence);
-  CHECK(resources.leaseFenceValue == frameContext.submissionFenceValue);
-  CHECK(resources.submission.submissionRequired);
+  CHECK(resources.leaseFence == nullptr);
+  CHECK(resources.leaseFenceValue == 0);
+  CHECK_FALSE(resources.submission.submissionRequired);
   CHECK(resources.sceneGaussians.IsValid());
   CHECK(resources.sceneIndexToChunk.IsValid());
   CHECK_FALSE(resources.sceneGaussians.callerMayTransition);
@@ -742,7 +743,6 @@ TEST_CASE("Renderer GPU resource export requires a lease and returns non-transit
   REQUIRE(resources.chunks.size() == 1u);
   CHECK(resources.chunks.front().gaussianData.IsValid());
   CHECK_FALSE(resources.chunks.front().gaussianData.callerMayTransition);
-  REQUIRE(harness.SignalFenceOnly().ok);
   CHECK(harness.renderer().Reset().ok);
 }
 
@@ -762,7 +762,10 @@ TEST_CASE("Renderer GPU resource lease holds destruction until the caller fence 
   REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
 
   UploadedSceneGpuResources resources{};
-  REQUIRE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
+  REQUIRE(harness.renderer().AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
+  CHECK(resources.leaseFence == frameContext.fence);
+  CHECK(resources.leaseFenceValue == frameContext.submissionFenceValue);
+  CHECK(resources.submission.submissionRequired);
   auto destroyFuture = std::async(std::launch::async, [&]() {
     return harness.renderer().DestroyUploadedScene(sceneHandle);
   });

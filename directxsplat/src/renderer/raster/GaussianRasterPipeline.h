@@ -57,7 +57,10 @@ class GaussianRasterPipeline {
                 const AdvancedRenderOptions* options,
                 RenderResult* outResult,
                 const RenderFrameContext* frameContext);
-  Status GetSceneGpuResources(uint64_t sceneId, const RenderFrameContext* frameContext, UploadedSceneGpuResources& out);
+  Status GetSceneGpuResources(uint64_t sceneId,
+                              const RenderFrameContext* frameContext,
+                              bool acquireLease,
+                              UploadedSceneGpuResources& out);
   Status GetChunkGpuResources(uint64_t sceneId, uint64_t chunkId, UploadedChunkGpuResources& out) const;
 
  private:

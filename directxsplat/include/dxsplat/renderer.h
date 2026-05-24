@@ -57,6 +57,9 @@ class Renderer {
   Status GetUploadedSceneGpuResources(UploadedSceneHandle sceneHandle,
                                       const RenderFrameContext& frameContext,
                                       UploadedSceneGpuResources& outResources) const;
+  Status AcquireUploadedSceneGpuResources(UploadedSceneHandle sceneHandle,
+                                          const RenderFrameContext& frameContext,
+                                          UploadedSceneGpuResources& outResources);
   Status PrepareSceneForRender(UploadedSceneHandle sceneHandle,
                                 const RenderInput& input,
                                 const RenderFrameContext& frameContext,
