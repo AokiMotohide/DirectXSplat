@@ -1680,6 +1680,9 @@ class Renderer::Impl {
     if (!sceneHandle.IsValid()) {
       return Status::Error("invalid uploaded scene handle");
     }
+    if (IsDeviceLost()) {
+      return Status::Error("renderer device lost");
+    }
     std::unique_lock<std::mutex> lock(accessMutex);
     auto it = accessStates.find(sceneHandle.value);
     if (it == accessStates.end()) {
@@ -1688,14 +1691,21 @@ class Renderer::Impl {
     it->second.waitingMutations++;
     accessCv.wait(lock, [&]() {
       auto current = accessStates.find(sceneHandle.value);
-      return current == accessStates.end() ||
+      return IsDeviceLost() || current == accessStates.end() ||
              (!current->second.mutationActive && current->second.activeRenderEncoders == 0 && current->second.activeMutationOps == 0);
     });
     it = accessStates.find(sceneHandle.value);
+    if (it != accessStates.end() && it->second.waitingMutations > 0) {
+      it->second.waitingMutations--;
+    }
+    if (IsDeviceLost()) {
+      lock.unlock();
+      accessCv.notify_all();
+      return Status::Error("renderer device lost");
+    }
     if (it == accessStates.end()) {
       return Status::Error("uploaded scene handle not found");
     }
-    it->second.waitingMutations--;
     it->second.mutationActive = true;
     it->second.mutationToken = nextMutationToken.fetch_add(1, std::memory_order_relaxed);
     outToken = {it->second.mutationToken, sceneHandle};
@@ -1716,11 +1726,18 @@ class Renderer::Impl {
     }
     accessCv.wait(lock, [&]() {
       auto current = accessStates.find(token.scene.value);
-      return current == accessStates.end() || current->second.activeMutationOps == 0;
+      return IsDeviceLost() || current == accessStates.end() || current->second.activeMutationOps == 0;
     });
     it = accessStates.find(token.scene.value);
     if (it == accessStates.end()) {
       return Status::Ok();
+    }
+    if (IsDeviceLost()) {
+      it->second.mutationActive = false;
+      it->second.mutationToken = 0;
+      lock.unlock();
+      accessCv.notify_all();
+      return Status::Error("renderer device lost");
     }
     it->second.mutationActive = false;
     it->second.mutationToken = 0;
@@ -2420,13 +2437,19 @@ class Renderer::Impl {
     if (!sceneHandle.IsValid()) {
       return Status::Error("invalid uploaded scene handle");
     }
+    if (IsDeviceLost()) {
+      return Status::Error("renderer device lost");
+    }
     std::unique_lock<std::mutex> lock(accessMutex);
     accessCv.wait(lock, [&]() {
       auto current = accessStates.find(sceneHandle.value);
-      return current == accessStates.end() ||
+      return IsDeviceLost() || current == accessStates.end() ||
              (!current->second.mutationActive && current->second.waitingMutations == 0 &&
               current->second.activeMutationOps == 0);
     });
+    if (IsDeviceLost()) {
+      return Status::Error("renderer device lost");
+    }
     auto it = accessStates.find(sceneHandle.value);
     if (it == accessStates.end()) {
       return Status::Error("uploaded scene handle not found");
@@ -2457,6 +2480,9 @@ class Renderer::Impl {
     auto it = accessStates.find(token.scene.value);
     if (it == accessStates.end()) {
       return Status::Error("uploaded scene handle not found");
+    }
+    if (IsDeviceLost()) {
+      return Status::Error("renderer device lost");
     }
     if (!it->second.mutationActive || it->second.mutationToken != token.value) {
       return Status::Error("scene mutation token is not active");

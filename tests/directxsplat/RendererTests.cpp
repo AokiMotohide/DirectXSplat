@@ -792,6 +792,43 @@ TEST_CASE("Renderer reset refuses outstanding mutation tokens and recovers after
   CHECK(harness.renderer().Reset().ok);
 }
 
+TEST_CASE("Renderer device loss wakes blocked scene access calls") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  if (!init.ok) {
+    INFO(init.message);
+    return;
+  }
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+  SceneMutationToken token{};
+  REQUIRE(harness.renderer().BeginSceneMutation(sceneHandle, token).ok);
+
+  const RenderInput input = MakeRenderInput(64, 64);
+  RenderFrameContext frameContext = harness.FrameContext();
+  auto prepareFuture = std::async(std::launch::async, [&]() {
+    RenderPreparationResult preparation{};
+    return harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation);
+  });
+
+  SceneMutationToken blockedToken{};
+  auto mutationFuture = std::async(std::launch::async, [&]() {
+    return harness.renderer().BeginSceneMutation(sceneHandle, blockedToken);
+  });
+
+  CHECK(prepareFuture.wait_for(std::chrono::milliseconds(25)) == std::future_status::timeout);
+  CHECK(mutationFuture.wait_for(std::chrono::milliseconds(25)) == std::future_status::timeout);
+
+  harness.renderer().NotifyDeviceLost();
+
+  REQUIRE(prepareFuture.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  REQUIRE(mutationFuture.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  CHECK_FALSE(prepareFuture.get().ok);
+  CHECK_FALSE(mutationFuture.get().ok);
+  CHECK_FALSE(harness.renderer().EndSceneMutation(token).ok);
+}
+
 TEST_CASE("Raster device-lost shutdown releases retained resources") {
   RenderHarness harness;
   const Status init = harness.Initialize();
