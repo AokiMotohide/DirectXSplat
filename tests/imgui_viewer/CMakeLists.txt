@@ -14,5 +14,4 @@ if(COMMAND directxsplat_apply_project_warnings)
   directxsplat_apply_project_warnings(ImGuiViewerTests)
 endif()
 
-include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
-doctest_discover_tests(ImGuiViewerTests DISCOVERY_TIMEOUT 120 DISCOVERY_MODE PRE_TEST PROPERTIES LABELS "imguiviewer;core")
+directxsplat_add_test_executable(ImGuiViewerTests "imguiviewer;core")

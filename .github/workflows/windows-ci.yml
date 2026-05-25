@@ -53,7 +53,7 @@ jobs:
           --config ${{ matrix.config }}
           --parallel
 
-      - name: List discovered tests
+      - name: List registered tests
         run: ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} -N
 
       - name: Run all core tests
@@ -68,7 +68,7 @@ jobs:
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
           -C ${{ matrix.config }}
-          -R "Scene IO|PPM loader|DetectSceneFormat"
+          -R "DirectXSplatTests|AppCommonTests"
           --output-on-failure
           --no-tests=error
 
@@ -77,7 +77,7 @@ jobs:
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
           -C ${{ matrix.config }}
-          -R "VRAM format|CPU diagnostic|HLSL|Shaders stay final-only"
+          -R "DirectXSplatTests"
           --output-on-failure
           --no-tests=error
 
@@ -127,6 +127,6 @@ jobs:
         run: >
           ctest --test-dir build/warp-renderer
           -C Release
-          -R "Renderer"
+          -R "DirectXSplatTests"
           --output-on-failure
           --no-tests=error

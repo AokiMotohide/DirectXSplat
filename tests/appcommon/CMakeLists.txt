@@ -9,5 +9,4 @@ if(COMMAND directxsplat_apply_project_warnings)
   directxsplat_apply_project_warnings(AppCommonTests)
 endif()
 
-include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
-doctest_discover_tests(AppCommonTests DISCOVERY_TIMEOUT 120 DISCOVERY_MODE PRE_TEST PROPERTIES LABELS "appcommon;core")
+directxsplat_add_test_executable(AppCommonTests "appcommon;core")

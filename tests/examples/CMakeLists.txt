@@ -9,5 +9,4 @@ if(COMMAND directxsplat_apply_project_warnings)
   directxsplat_apply_project_warnings(ExampleTests)
 endif()
 
-include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
-doctest_discover_tests(ExampleTests DISCOVERY_TIMEOUT 120 DISCOVERY_MODE PRE_TEST PROPERTIES LABELS "examples;core")
+directxsplat_add_test_executable(ExampleTests "examples;core")
