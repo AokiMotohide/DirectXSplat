@@ -56,6 +56,7 @@ class D3D12ExampleDevice {
 
  private:
   Status WaitForFence(uint64_t value);
+  Status CheckDeviceRemoved();
 
   Microsoft::WRL::ComPtr<IDXGIFactory6> factory_;
   Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter_;

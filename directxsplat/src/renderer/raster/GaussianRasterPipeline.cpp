@@ -38,6 +38,7 @@ constexpr uint32_t kSortStatsReadbackPeriod = 30;
 constexpr float kPackedMipFilterFraction = 0.18f;
 constexpr uint32_t kMaxSceneIndexToChunkEntries = 64u * 1024u * 1024u;
 constexpr size_t kRenderScratchRetiredResourceSlots = 15;
+constexpr DWORD kFenceWaitPollMs = 50;
 
 constexpr size_t AlignUp(size_t value, size_t alignment) {
   return (value + alignment - 1u) & ~(alignment - 1u);
@@ -452,6 +453,23 @@ Status GaussianRasterPipeline::EnsureUploadCommandObjects() {
 
 Status GaussianRasterPipeline::WaitUploadQueue() {
   std::lock_guard<std::recursive_mutex> uploadLock(uploadMutex_);
+  auto failLost = [&]() {
+    deviceLost_ = true;
+    uploadQueueFailed_ = true;
+    return Status::Error("upload queue is lost");
+  };
+  auto checkDevice = [&]() -> Status {
+    if (deviceLost_ || uploadQueueFailed_) {
+      return Status::Error("upload queue is lost");
+    }
+    if (device_ != nullptr) {
+      const HRESULT removed = device_->GetDeviceRemovedReason();
+      if (FAILED(removed)) {
+        return failLost();
+      }
+    }
+    return Status::Ok();
+  };
   if (deviceLost_ || uploadQueueFailed_) {
     return Status::Error("upload queue is lost");
   }
@@ -459,16 +477,29 @@ Status GaussianRasterPipeline::WaitUploadQueue() {
     return Status::Ok();
   }
   if (uploadFence_->GetCompletedValue() < uploadFenceValue_) {
+    Status deviceStatus = checkDevice();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
     const HRESULT hr = uploadFence_->SetEventOnCompletion(uploadFenceValue_, uploadFenceEvent_);
     if (FAILED(hr)) {
-      deviceLost_ = true;
-      uploadQueueFailed_ = true;
-      return Status::Error("failed waiting for upload fence");
+      deviceStatus = checkDevice();
+      return deviceStatus.ok ? Status::Error("failed waiting for upload fence") : deviceStatus;
     }
-    if (WaitForSingleObject(uploadFenceEvent_, INFINITE) != WAIT_OBJECT_0) {
-      deviceLost_ = true;
-      uploadQueueFailed_ = true;
-      return Status::Error("failed waiting for upload fence");
+    while (uploadFence_->GetCompletedValue() < uploadFenceValue_) {
+      const DWORD wait = WaitForSingleObject(uploadFenceEvent_, kFenceWaitPollMs);
+      if (wait == WAIT_OBJECT_0) {
+        break;
+      }
+      if (wait != WAIT_TIMEOUT) {
+        deviceLost_ = true;
+        uploadQueueFailed_ = true;
+        return Status::Error("failed waiting for upload fence");
+      }
+      deviceStatus = checkDevice();
+      if (!deviceStatus.ok) {
+        return deviceStatus;
+      }
     }
   }
   CollectRetiredResources(UINT64_MAX);

@@ -16,6 +16,15 @@ std::string HrString(HRESULT hr) {
   return stream.str();
 }
 
+bool IsDeviceRemovalFailure(HRESULT hr) {
+  return hr == DXGI_ERROR_DEVICE_REMOVED ||
+         hr == DXGI_ERROR_DEVICE_RESET ||
+         hr == DXGI_ERROR_DEVICE_HUNG ||
+         hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
+}
+
+constexpr DWORD kFenceWaitPollMs = 50;
+
 D3D12_RESOURCE_BARRIER TransitionBarrier(ID3D12Resource* resource,
                                          D3D12_RESOURCE_STATES before,
                                          D3D12_RESOURCE_STATES after) {
@@ -436,16 +445,48 @@ Status D3D12ExampleDevice::WaitForFence(uint64_t value) {
   if (fence_ == nullptr || fenceEvent_ == nullptr) {
     return Status::Error("fence is not initialized");
   }
-  if (fence_->GetCompletedValue() >= value) {
+  if (value == 0 || fence_->GetCompletedValue() >= value) {
     return Status::Ok();
+  }
+  Status deviceStatus = CheckDeviceRemoved();
+  if (!deviceStatus.ok) {
+    return deviceStatus;
   }
   HRESULT hr = fence_->SetEventOnCompletion(value, fenceEvent_);
   if (FAILED(hr)) {
+    deviceStatus = CheckDeviceRemoved();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
     return Status::Error("SetEventOnCompletion failed " + HrString(hr));
   }
-  const DWORD wait = WaitForSingleObject(fenceEvent_, INFINITE);
-  if (wait != WAIT_OBJECT_0) {
-    return Status::Error("WaitForSingleObject failed");
+  while (fence_->GetCompletedValue() < value) {
+    const DWORD wait = WaitForSingleObject(fenceEvent_, kFenceWaitPollMs);
+    if (wait == WAIT_OBJECT_0) {
+      break;
+    }
+    if (wait != WAIT_TIMEOUT) {
+      queueLost_ = true;
+      return Status::Error("WaitForSingleObject failed");
+    }
+    deviceStatus = CheckDeviceRemoved();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
+  }
+  return Status::Ok();
+}
+
+Status D3D12ExampleDevice::CheckDeviceRemoved() {
+  if (queueLost_) {
+    return Status::Error("direct queue is lost");
+  }
+  if (device_ != nullptr) {
+    const HRESULT removed = device_->GetDeviceRemovedReason();
+    if (IsDeviceRemovalFailure(removed)) {
+      queueLost_ = true;
+      return Status::Error("direct queue is lost");
+    }
   }
   return Status::Ok();
 }

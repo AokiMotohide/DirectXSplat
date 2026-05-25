@@ -61,6 +61,8 @@ class SwapchainContext {
   dxsplat::Status CreateImGuiHeap();
   dxsplat::Status SignalFrame(Frame& frame);
   dxsplat::Status WaitForFrameLatency();
+  dxsplat::Status WaitForFenceValue(uint64_t value);
+  dxsplat::Status CheckDeviceRemoved();
   std::string DebugMessages() const;
 
   HWND hwnd_ = nullptr;

@@ -36,6 +36,7 @@ constexpr uint64_t kMaxResidencySceneGaussians = 64ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxResidencyChunks = 1024ull * 1024ull;
 constexpr uint64_t kDefaultResidencyChunkExpandedBytes = 64ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxResidencyChunkExpandedBytes = 2ull * 1024ull * 1024ull * 1024ull;
+constexpr DWORD kFenceWaitPollMs = 50;
 
 RendererConfig SanitizeRendererConfig(RendererConfig config) {
   config.residencyBudgetGaussians = std::clamp<uint64_t>(config.residencyBudgetGaussians, 1, kMaxResidencySceneGaussians);
@@ -994,28 +995,58 @@ class Renderer::Impl {
     return false;
   }
 
-  Status WaitForFence(ID3D12Fence* fence, uint64_t value) const {
+  Status CheckFenceWaitDeviceLost() {
+    if (IsDeviceLost()) {
+      return Status::Error("renderer device lost");
+    }
+    if (device != nullptr) {
+      const HRESULT removed = device->GetDeviceRemovedReason();
+      if (FAILED(removed)) {
+        NotifyDeviceLost();
+        return Status::Error("renderer device lost");
+      }
+    }
+    return Status::Ok();
+  }
+
+  Status WaitForFence(ID3D12Fence* fence, uint64_t value) {
     if (fence == nullptr || value == 0 || fence->GetCompletedValue() >= value) {
       return Status::Ok();
+    }
+    Status deviceStatus = CheckFenceWaitDeviceLost();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
     }
     HANDLE eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (eventHandle == nullptr) {
       return Status::Error("failed creating fence wait event");
     }
-    if (SUCCEEDED(fence->SetEventOnCompletion(value, eventHandle))) {
-      if (WaitForSingleObject(eventHandle, INFINITE) != WAIT_OBJECT_0) {
+    const HRESULT hr = fence->SetEventOnCompletion(value, eventHandle);
+    if (FAILED(hr)) {
+      CloseHandle(eventHandle);
+      deviceStatus = CheckFenceWaitDeviceLost();
+      return deviceStatus.ok ? Status::Error("failed waiting for fence") : deviceStatus;
+    }
+    while (fence->GetCompletedValue() < value) {
+      const DWORD wait = WaitForSingleObject(eventHandle, kFenceWaitPollMs);
+      if (wait == WAIT_OBJECT_0) {
+        break;
+      }
+      if (wait != WAIT_TIMEOUT) {
         CloseHandle(eventHandle);
         return Status::Error("failed waiting for fence");
       }
-    } else {
-      CloseHandle(eventHandle);
-      return Status::Error("failed waiting for fence");
+      deviceStatus = CheckFenceWaitDeviceLost();
+      if (!deviceStatus.ok) {
+        CloseHandle(eventHandle);
+        return deviceStatus;
+      }
     }
     CloseHandle(eventHandle);
     return Status::Ok();
   }
 
-  Status WaitResidencyInstanceGpuIdle(const std::shared_ptr<ResidencyInstanceRecord>& instance) const {
+  Status WaitResidencyInstanceGpuIdle(const std::shared_ptr<ResidencyInstanceRecord>& instance) {
     if (instance == nullptr) {
       return Status::Ok();
     }
@@ -1040,7 +1071,7 @@ class Renderer::Impl {
     return Status::Ok();
   }
 
-  Status WaitRecordResidencyGpuIdle(const std::shared_ptr<SceneRecord>& record) const {
+  Status WaitRecordResidencyGpuIdle(const std::shared_ptr<SceneRecord>& record) {
     if (record == nullptr) {
       return Status::Ok();
     }
@@ -1064,7 +1095,7 @@ class Renderer::Impl {
     return Status::Ok();
   }
 
-  Status WaitAllResidencyGpuIdle() const {
+  Status WaitAllResidencyGpuIdle() {
     std::vector<std::shared_ptr<SceneRecord>> records;
     try {
       {
@@ -1248,9 +1279,11 @@ class Renderer::Impl {
       return Status::Error("invalid D3D12 device/queue");
     }
     config = SanitizeRendererConfig(rendererConfig);
+    device = context.Device();
     submissionFence = context.SubmissionFence();
     Status status = raster.Initialize(context.Device(), context.CommandQueue(), context.SubmissionFence(), context.CopyQueue(), context.UploadFence(), config.enableGpuTiming);
     if (!status.ok) {
+      device.Reset();
       submissionFence.Reset();
     }
     initialized.store(status.ok, std::memory_order_release);
@@ -1269,7 +1302,10 @@ class Renderer::Impl {
     if (!lost) {
       Status idle = WaitAllResidencyGpuIdle();
       if (!idle.ok) {
-        return idle;
+        lost = IsDeviceLost();
+        if (!lost) {
+          return idle;
+        }
       }
     }
     Status shutdown = Status::Ok();
@@ -1334,6 +1370,7 @@ class Renderer::Impl {
 
   void ReleaseRendererConfig() {
     config = {};
+    device.Reset();
     submissionFence.Reset();
   }
 
@@ -2710,6 +2747,7 @@ class Renderer::Impl {
   std::atomic_bool deviceLost{false};
   std::atomic_bool initialized{false};
   RendererConfig config{};
+  Microsoft::WRL::ComPtr<ID3D12Device> device;
   Microsoft::WRL::ComPtr<ID3D12Fence> submissionFence;
 };
 

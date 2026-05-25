@@ -43,6 +43,8 @@ bool IsDeviceRemovalFailure(HRESULT hr) {
          hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
 }
 
+constexpr DWORD kFenceWaitPollMs = 50;
+
 }  
 
 dxsplat::Status SwapchainContext::Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer) {
@@ -325,15 +327,10 @@ dxsplat::Status SwapchainContext::BeginFrame(bool waitForFrameLatency) {
     return dxsplat::Status::Error("swapchain frame resources are invalid");
   }
 
-  if (frame.fenceValue != 0 && fence_->GetCompletedValue() < frame.fenceValue) {
-    HRESULT hr = fence_->SetEventOnCompletion(frame.fenceValue, fenceEvent_);
-    if (FAILED(hr)) {
-      queueLost_ = true;
-      return dxsplat::Status::Error("SetEventOnCompletion failed " + HrString(hr) + DebugMessages());
-    }
-    if (WaitForSingleObject(fenceEvent_, INFINITE) != WAIT_OBJECT_0) {
-      queueLost_ = true;
-      return dxsplat::Status::Error("WaitForSingleObject failed");
+  if (frame.fenceValue != 0) {
+    dxsplat::Status waited = WaitForFenceValue(frame.fenceValue);
+    if (!waited.ok) {
+      return waited;
     }
   }
   frame.fenceValue = 0;
@@ -431,12 +428,20 @@ dxsplat::Status SwapchainContext::WaitForFrameLatency() {
   if (frameLatencyWaitableObject_ == nullptr) {
     return dxsplat::Status::Error("frame latency waitable object is not initialized");
   }
-  const DWORD wait = WaitForSingleObject(frameLatencyWaitableObject_, INFINITE);
-  if (wait != WAIT_OBJECT_0) {
-    queueLost_ = true;
-    return dxsplat::Status::Error("frame latency wait failed");
+  for (;;) {
+    const DWORD wait = WaitForSingleObject(frameLatencyWaitableObject_, kFenceWaitPollMs);
+    if (wait == WAIT_OBJECT_0) {
+      return dxsplat::Status::Ok();
+    }
+    if (wait != WAIT_TIMEOUT) {
+      queueLost_ = true;
+      return dxsplat::Status::Error("frame latency wait failed");
+    }
+    dxsplat::Status deviceStatus = CheckDeviceRemoved();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
   }
-  return dxsplat::Status::Ok();
 }
 
 dxsplat::Status SwapchainContext::WaitForGpu() {
@@ -453,16 +458,9 @@ dxsplat::Status SwapchainContext::WaitForGpu() {
     return dxsplat::Status::Error("queue signal failed " + HrString(hr) + DebugMessages());
   }
   fenceValue_ = signal;
-  if (fence_->GetCompletedValue() < signal) {
-    hr = fence_->SetEventOnCompletion(signal, fenceEvent_);
-    if (FAILED(hr)) {
-      queueLost_ = true;
-      return dxsplat::Status::Error("SetEventOnCompletion failed " + HrString(hr) + DebugMessages());
-    }
-    if (WaitForSingleObject(fenceEvent_, INFINITE) != WAIT_OBJECT_0) {
-      queueLost_ = true;
-      return dxsplat::Status::Error("WaitForSingleObject failed");
-    }
+  dxsplat::Status waited = WaitForFenceValue(signal);
+  if (!waited.ok) {
+    return waited;
   }
   for (Frame& frame : frames_) {
     frame.fenceValue = 0;
@@ -472,6 +470,57 @@ dxsplat::Status SwapchainContext::WaitForGpu() {
 
 void SwapchainContext::NotifyQueueLost() {
   queueLost_ = true;
+}
+
+dxsplat::Status SwapchainContext::CheckDeviceRemoved() {
+  if (queueLost_) {
+    return dxsplat::Status::Error("direct queue is lost");
+  }
+  if (device_ != nullptr) {
+    const HRESULT removed = device_->GetDeviceRemovedReason();
+    if (IsDeviceRemovalFailure(removed)) {
+      queueLost_ = true;
+      return dxsplat::Status::Error("direct queue is lost");
+    }
+  }
+  return dxsplat::Status::Ok();
+}
+
+dxsplat::Status SwapchainContext::WaitForFenceValue(uint64_t value) {
+  if (fence_ == nullptr || fenceEvent_ == nullptr) {
+    return dxsplat::Status::Error("swapchain fence is not initialized");
+  }
+  if (value == 0 || fence_->GetCompletedValue() >= value) {
+    return dxsplat::Status::Ok();
+  }
+  dxsplat::Status deviceStatus = CheckDeviceRemoved();
+  if (!deviceStatus.ok) {
+    return deviceStatus;
+  }
+  HRESULT hr = fence_->SetEventOnCompletion(value, fenceEvent_);
+  if (FAILED(hr)) {
+    deviceStatus = CheckDeviceRemoved();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
+    queueLost_ = true;
+    return dxsplat::Status::Error("SetEventOnCompletion failed " + HrString(hr) + DebugMessages());
+  }
+  while (fence_->GetCompletedValue() < value) {
+    const DWORD wait = WaitForSingleObject(fenceEvent_, kFenceWaitPollMs);
+    if (wait == WAIT_OBJECT_0) {
+      break;
+    }
+    if (wait != WAIT_TIMEOUT) {
+      queueLost_ = true;
+      return dxsplat::Status::Error("WaitForSingleObject failed");
+    }
+    deviceStatus = CheckDeviceRemoved();
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
+  }
+  return dxsplat::Status::Ok();
 }
 
 ID3D12Device* SwapchainContext::Device() const { return device_.Get(); }
