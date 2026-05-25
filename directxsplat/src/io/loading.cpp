@@ -178,6 +178,20 @@ std::vector<std::string> BackgroundSceneLoader::ScenePaths() const {
 }
 
 void BackgroundSceneLoader::WorkerMain() {
+  auto makeErrorItem = [](size_t itemIndex, const char* message) noexcept {
+    CompletedItem item{};
+    item.index = itemIndex;
+    try {
+      item.error = message;
+    } catch (...) {
+      try {
+        item.error = "error";
+      } catch (...) {
+      }
+    }
+    return item;
+  };
+
   while (true) {
     size_t index = std::numeric_limits<size_t>::max();
     std::string scenePath;
@@ -199,12 +213,22 @@ void BackgroundSceneLoader::WorkerMain() {
     }
 
     CompletedItem item{};
-    item.index = index;
-    const auto result = LoadSceneFromFile(scenePath, options);
-    if (result.ok()) {
-      item.scene = std::move(result.value);
-    } else {
-      item.error = result.status.message;
+    try {
+      item.index = index;
+      const auto result = LoadSceneFromFile(scenePath, options);
+      if (result.ok()) {
+        item.scene = std::move(result.value);
+      } else {
+        item.error = result.status.message;
+      }
+    } catch (const std::bad_alloc&) {
+      item = makeErrorItem(index, "scene traversal allocation failed");
+    } catch (const std::length_error&) {
+      item = makeErrorItem(index, "scene traversal allocation failed");
+    } catch (const std::exception&) {
+      item = makeErrorItem(index, "scene traversal load failed");
+    } catch (...) {
+      item = makeErrorItem(index, "scene traversal load failed");
     }
 
     {
@@ -218,9 +242,7 @@ void BackgroundSceneLoader::WorkerMain() {
       auto publishFailure = [&]() noexcept {
         try {
           completed_.clear();
-          CompletedItem errorItem{};
-          errorItem.index = index;
-          errorItem.error = "scene traversal allocation failed";
+          CompletedItem errorItem = makeErrorItem(index, "scene traversal allocation failed");
           completed_.push_back(std::move(errorItem));
         } catch (...) {
           completed_.clear();

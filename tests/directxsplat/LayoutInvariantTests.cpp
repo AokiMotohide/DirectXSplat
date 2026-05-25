@@ -121,4 +121,13 @@ TEST_CASE("fast PLY path rejects variable rows before fixed body footprint") {
   CHECK(loader.find("return Status::Error(\"unsupported fast ply path\");") != std::string::npos);
 }
 
+TEST_CASE("background loader worker catches load materialization failures") {
+  const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
+  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "loading.cpp");
+
+  REQUIRE_FALSE(loader.empty());
+  CHECK(loader.find("item = makeErrorItem(index, \"scene traversal allocation failed\");") != std::string::npos);
+  CHECK(loader.find("item = makeErrorItem(index, \"scene traversal load failed\");") != std::string::npos);
+}
+
 }  // namespace dxsplat
