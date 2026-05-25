@@ -47,6 +47,21 @@ cmake --build build-lib --config Release --target dxsplat
 
 ## Use From CMake
 
+Fetch the `v0.1.0` release:
+
+```cmake
+include(FetchContent)
+
+FetchContent_Declare(
+  DirectXSplat
+  GIT_REPOSITORY https://github.com/pbkx/DirectXSplat.git
+  GIT_TAG v0.1.0
+)
+FetchContent_MakeAvailable(DirectXSplat)
+
+target_link_libraries(my_app PRIVATE DirectXSplat::DirectXSplat)
+```
+
 Install:
 
 ```powershell
