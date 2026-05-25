@@ -36,6 +36,10 @@ constexpr uint64_t kMaxResidencySceneGaussians = 64ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxResidencyChunks = 1024ull * 1024ull;
 constexpr uint64_t kDefaultResidencyChunkExpandedBytes = 64ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxResidencyChunkExpandedBytes = 2ull * 1024ull * 1024ull * 1024ull;
+constexpr uint64_t kResidencyChunkExpandedStride = static_cast<uint64_t>(sizeof(Gaussian) + sizeof(Vec3)) * 3ull;
+constexpr uint32_t kMaxResidencyChunkTargetSize =
+    static_cast<uint32_t>(std::min<uint64_t>(kMaxResidencyChunkExpandedBytes / kResidencyChunkExpandedStride,
+                                             std::numeric_limits<uint32_t>::max()));
 constexpr DWORD kFenceWaitPollMs = 50;
 
 RendererConfig SanitizeRendererConfig(RendererConfig config) {
@@ -43,7 +47,7 @@ RendererConfig SanitizeRendererConfig(RendererConfig config) {
   config.uploadBudgetGaussians = std::clamp<uint64_t>(config.uploadBudgetGaussians, 1, kMaxResidencySceneGaussians);
   config.warmUploadBudgetGaussians = std::clamp<uint64_t>(config.warmUploadBudgetGaussians, 1, kMaxResidencySceneGaussians);
   config.maxUploadsPerFrame = std::max<uint32_t>(config.maxUploadsPerFrame, 1);
-  config.chunkTargetSize = std::max<uint32_t>(config.chunkTargetSize, 1);
+  config.chunkTargetSize = std::clamp<uint32_t>(config.chunkTargetSize, 1, kMaxResidencyChunkTargetSize);
   config.lod0ScreenRadius = std::max(config.lod0ScreenRadius, 0.001f);
   config.lod1ScreenRadius = std::clamp(config.lod1ScreenRadius, 0.001f, config.lod0ScreenRadius);
   config.cullScreenRadius = std::max(config.cullScreenRadius, 0.0f);
@@ -137,16 +141,15 @@ Status ValidateResidencyChunkInput(const GaussianSet& chunk, const RendererConfi
   if (count > kMaxResidencySceneGaussians) {
     return Status::Error("chunk has too many gaussians");
   }
-  constexpr uint64_t stride = static_cast<uint64_t>(sizeof(Gaussian) + sizeof(Vec3)) * 3ull;
-  if (count > std::numeric_limits<uint64_t>::max() / stride) {
+  if (count > std::numeric_limits<uint64_t>::max() / kResidencyChunkExpandedStride) {
     return Status::Error("chunk has too many gaussians");
   }
   const uint64_t target = std::max<uint32_t>(config.chunkTargetSize, 1);
   uint64_t budget = kMaxResidencyChunkExpandedBytes;
-  if (target <= std::numeric_limits<uint64_t>::max() / stride) {
-    budget = std::clamp(target * stride, kDefaultResidencyChunkExpandedBytes, kMaxResidencyChunkExpandedBytes);
+  if (target <= std::numeric_limits<uint64_t>::max() / kResidencyChunkExpandedStride) {
+    budget = std::clamp(target * kResidencyChunkExpandedStride, kDefaultResidencyChunkExpandedBytes, kMaxResidencyChunkExpandedBytes);
   }
-  if (count * stride > budget) {
+  if (count * kResidencyChunkExpandedStride > budget) {
     return Status::Error("chunk has too many gaussians");
   }
   return Status::Ok();
@@ -886,6 +889,12 @@ class Renderer::Impl {
     std::vector<GaussianSet> logical = BuildLogicalChunks(scene);
     if (logical.size() > kMaxResidencyChunks) {
       return Status::Error("scene has too many residency chunks");
+    }
+    for (const GaussianSet& chunk : logical) {
+      Status chunkStatus = ValidateResidencyChunkInput(chunk, config);
+      if (!chunkStatus.ok) {
+        return chunkStatus;
+      }
     }
     while (chunks.size() < logical.size()) {
       chunks.push_back({nextChunkId.fetch_add(1, std::memory_order_relaxed)});
