@@ -255,7 +255,7 @@ Status GaussianRasterPipeline::Initialize(ID3D12Device* device,
   }
   {
     std::lock_guard<std::recursive_mutex> uploadLock(uploadMutex_);
-    if (device_ != nullptr || queue_ != nullptr || copyQueue_ != nullptr || uploadFence_ != nullptr ||
+    if (device_.Get() != nullptr || queue_.Get() != nullptr || copyQueue_ != nullptr || uploadFence_ != nullptr ||
         uploadFenceEvent_ != nullptr || !uploadContexts_.empty() || !retiredResources_.empty() ||
         !untrackedRetiredResources_.empty()) {
       return Status::Error("raster pipeline is already initialized");
@@ -411,8 +411,8 @@ Status GaussianRasterPipeline::ShutdownInternal(bool deviceLostCleanup) {
     depthRasterPsos_.clear();
   }
 
-  device_ = nullptr;
-  queue_ = nullptr;
+  device_.Reset();
+  queue_.Reset();
   gpuTimestampMsPerTick_ = 0.0;
   return shutdownStatus;
 }
@@ -455,7 +455,7 @@ Status GaussianRasterPipeline::WaitUploadQueue() {
   if (deviceLost_ || uploadQueueFailed_) {
     return Status::Error("upload queue is lost");
   }
-  if (queue_ == nullptr || uploadFence_ == nullptr || uploadFenceEvent_ == nullptr) {
+  if (queue_.Get() == nullptr || uploadFence_ == nullptr || uploadFenceEvent_ == nullptr) {
     return Status::Ok();
   }
   if (uploadFence_->GetCompletedValue() < uploadFenceValue_) {
@@ -3002,7 +3002,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
   if (!s.ok) return s;
 
   oneSweep_ = std::make_unique<dxsplat::OneSweep>();
-  s = oneSweep_->Initialize(device_);
+  s = oneSweep_->Initialize(device_.Get());
   if (!s.ok) return s;
 
   s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM);

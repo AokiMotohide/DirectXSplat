@@ -368,8 +368,8 @@ class GaussianRasterPipeline {
                     const GpuFrameResources& resources,
                     FrameStats& stats) const;
 
-  ID3D12Device* device_ = nullptr;
-  ID3D12CommandQueue* queue_ = nullptr;
+  Microsoft::WRL::ComPtr<ID3D12Device> device_;
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_;
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> copyQueue_;
   mutable std::shared_mutex uploadedScenesMutex_;
   std::unordered_map<uint64_t, std::shared_ptr<UploadedSceneRuntime>> uploadedScenes_;
