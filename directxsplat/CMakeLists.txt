@@ -159,7 +159,7 @@ configure_package_config_file(
 
 write_basic_package_version_file(
   ${CMAKE_CURRENT_BINARY_DIR}/DirectXSplatConfigVersion.cmake
-  VERSION 0.1.0
+  VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
 )
 

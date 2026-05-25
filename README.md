@@ -4,7 +4,7 @@
 
 A C++/Direct3D 12 library for rendering 3D Gaussian Splats in D3D12.
 
-![DirectXSplat preview image placeholder](docs/images/render.png)
+![DirectXSplat screenshot](docs/images/render.png)
 
 This is a C++/Direct3D 12 library for rendering scenes captured via the techniques described in [3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). It lets you load PLY, SPZ, `.splat`, SOG, and LOD metadata scenes and render them from a host D3D12 application.
 
