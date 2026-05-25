@@ -555,10 +555,7 @@ TEST_CASE("Renderer public APIs fail cleanly before initialization") {
 TEST_CASE("Renderer handles empty scenes and chunk operations") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(sceneHandle).ok);
@@ -637,10 +634,7 @@ TEST_CASE("Renderer handles empty scenes and chunk operations") {
 TEST_CASE("Renderer rejects stale frame contexts") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -660,10 +654,7 @@ TEST_CASE("Renderer rejects stale frame contexts") {
 TEST_CASE("Renderer prepares negative view-space Z residency") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -679,10 +670,7 @@ TEST_CASE("Renderer prepares negative view-space Z residency") {
 TEST_CASE("Renderer reports dirty render errors as requiring submission") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -711,10 +699,7 @@ TEST_CASE("Renderer reports dirty render errors as requiring submission") {
 TEST_CASE("Renderer GPU resource snapshot does not publish a direct fence lease") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -749,10 +734,7 @@ TEST_CASE("Renderer GPU resource snapshot does not publish a direct fence lease"
 TEST_CASE("Renderer GPU resource lease holds destruction until the caller fence is signaled") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -778,10 +760,7 @@ TEST_CASE("Renderer GPU resource lease holds destruction until the caller fence 
 TEST_CASE("Renderer reset refuses outstanding mutation tokens and recovers after end") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -798,10 +777,7 @@ TEST_CASE("Renderer reset refuses outstanding mutation tokens and recovers after
 TEST_CASE("Renderer device loss wakes blocked scene access calls") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -835,17 +811,11 @@ TEST_CASE("Renderer device loss wakes blocked scene access calls") {
 TEST_CASE("Raster device-lost shutdown releases retained resources") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   GaussianRasterPipeline raster;
   Status rasterInit = raster.Initialize(harness.device(), harness.queue(), harness.fence(), nullptr, nullptr, true);
-  if (!rasterInit.ok) {
-    INFO(rasterInit.message);
-    return;
-  }
+  REQUIRE_MESSAGE(rasterInit.ok, rasterInit.message);
 
   Scene scene = MakeTinyScene();
   std::vector<uint64_t> chunkIds{1u};
@@ -859,10 +829,7 @@ TEST_CASE("Raster device-lost shutdown releases retained resources") {
 TEST_CASE("Renderer uploads and exposes every VRAM format combination") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   const std::array<VramAttributeFormat, 3> formats{
       VramAttributeFormat::Float32,
@@ -895,10 +862,7 @@ TEST_CASE("Renderer uploads and exposes every VRAM format combination") {
 TEST_CASE("Renderer renders every VRAM format combination") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   const std::array<VramAttributeFormat, 3> formats{
       VramAttributeFormat::Float32,
@@ -934,10 +898,7 @@ TEST_CASE("Renderer renders every VRAM format combination") {
 TEST_CASE("Renderer final render path works") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -965,10 +926,7 @@ TEST_CASE("Renderer final render path works") {
 TEST_CASE("Renderer survives repeated upload update render and reset cycles") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   std::vector<UploadedChunkHandle> chunks;
@@ -1008,10 +966,7 @@ TEST_CASE("Renderer survives repeated upload update render and reset cycles") {
 TEST_CASE("Renderer finalizes managed target state on dirty late render errors") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
@@ -1042,10 +997,7 @@ TEST_CASE("Renderer finalizes managed target state on dirty late render errors")
 TEST_CASE("Renderer initializes, uploads a tiny scene, and renders offscreen") {
   RenderHarness harness;
   const Status init = harness.Initialize();
-  if (!init.ok) {
-    INFO(init.message);
-    return;
-  }
+  REQUIRE_MESSAGE(init.ok, init.message);
 
   UploadedSceneHandle sceneHandle{};
   std::vector<UploadedChunkHandle> chunkHandles;
