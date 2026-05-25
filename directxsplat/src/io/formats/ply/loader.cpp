@@ -741,11 +741,21 @@ Status ValidateFastPlyExpandedStorage(const FastPlyHeader& header) {
   return Status::Ok();
 }
 
+Status ValidateFastPlyFixedRows(const FastPlyHeader& header) {
+  for (const ply::PlyElement& element : header.elements) {
+    for (const ply::PlyProperty& prop : element.properties) {
+      if (prop.isList) {
+        return Status::Error("unsupported fast ply path");
+      }
+    }
+  }
+  return Status::Ok();
+}
+
 StatusOr<uint64_t> FastPlyMinimumRowBytes(const ply::PlyElement& element) {
   uint64_t rowBytes = 0;
   for (const ply::PlyProperty& prop : element.properties) {
-    const ply::PlyScalarType type = prop.isList ? prop.listCountType : prop.type;
-    const uint64_t size = static_cast<uint64_t>(ply::ScalarTypeSize(type));
+    const uint64_t size = static_cast<uint64_t>(ply::ScalarTypeSize(prop.type));
     if (size == 0) {
       return StatusOr<uint64_t>::Error("unsupported scalar type");
     }
@@ -765,6 +775,10 @@ Status ValidateFastPlyBodyFootprint(const FastPlyHeader& header, uint64_t fileSi
   Status storageStatus = ValidateFastPlyExpandedStorage(header);
   if (!storageStatus.ok) {
     return storageStatus;
+  }
+  Status fixedRowsStatus = ValidateFastPlyFixedRows(header);
+  if (!fixedRowsStatus.ok) {
+    return fixedRowsStatus;
   }
   const auto bodyOffset = StreamPosBytes(header.bodyOffset);
   if (!bodyOffset.ok()) {

@@ -108,4 +108,17 @@ TEST_CASE("raw PLY fallback budgets stay bounded") {
   CHECK(reader.find("kMaxPlyScalarBytes = 256ull * 1024ull * 1024ull") != std::string::npos);
 }
 
+TEST_CASE("fast PLY path rejects variable rows before fixed body footprint") {
+  const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
+  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "formats" / "ply" / "loader.cpp");
+
+  REQUIRE_FALSE(loader.empty());
+  const size_t fixedRows = loader.find("Status fixedRowsStatus = ValidateFastPlyFixedRows(header);");
+  const size_t bodyOffset = loader.find("const auto bodyOffset = StreamPosBytes(header.bodyOffset);");
+  REQUIRE(fixedRows != std::string::npos);
+  REQUIRE(bodyOffset != std::string::npos);
+  CHECK(fixedRows < bodyOffset);
+  CHECK(loader.find("return Status::Error(\"unsupported fast ply path\");") != std::string::npos);
+}
+
 }  // namespace dxsplat
