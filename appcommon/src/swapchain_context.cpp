@@ -106,6 +106,7 @@ dxsplat::Status SwapchainContext::Shutdown() {
   fenceValue_ = 0;
   frameIndex_ = 0;
   queueLost_ = false;
+  allowTearing_ = false;
   return idle;
 }
 
@@ -175,6 +176,10 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
     return dxsplat::Status::Error("CreateCommandQueue failed");
   }
 
+  BOOL allowTearing = FALSE;
+  hr = factory_->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing));
+  allowTearing_ = SUCCEEDED(hr) && allowTearing != FALSE;
+
   DXGI_SWAP_CHAIN_DESC1 swapDesc{};
   swapDesc.Width = width_;
   swapDesc.Height = height_;
@@ -185,6 +190,9 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
   swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
   swapDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
   swapDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+  if (allowTearing_) {
+    swapDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+  }
 
   ComPtr<IDXGISwapChain1> swapchain1;
   hr = factory_->CreateSwapChainForHwnd(queue_.Get(), hwnd_, &swapDesc, nullptr, nullptr, swapchain1.GetAddressOf());
@@ -400,7 +408,8 @@ dxsplat::Status SwapchainContext::EndFrame(bool vsync) {
     return signaled;
   }
 
-  hr = swapchain_->Present(vsync ? 1 : 0, 0);
+  const UINT presentFlags = (!vsync && allowTearing_) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+  hr = swapchain_->Present(vsync ? 1 : 0, presentFlags);
   if (FAILED(hr)) {
     HRESULT removed = device_ != nullptr ? device_->GetDeviceRemovedReason() : S_OK;
     if (IsDeviceRemovalFailure(hr) || IsDeviceRemovalFailure(removed)) {

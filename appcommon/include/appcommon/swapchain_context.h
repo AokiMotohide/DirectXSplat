@@ -86,6 +86,7 @@ class SwapchainContext {
   HANDLE fenceEvent_ = nullptr;
   uint64_t fenceValue_ = 0;
   bool queueLost_ = false;
+  bool allowTearing_ = false;
 
   uint32_t frameIndex_ = 0;
 
