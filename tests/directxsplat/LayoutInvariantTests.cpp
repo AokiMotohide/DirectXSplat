@@ -121,6 +121,17 @@ TEST_CASE("fast PLY path rejects variable rows before fixed body footprint") {
   CHECK(loader.find("return Status::Error(\"unsupported fast ply path\");") != std::string::npos);
 }
 
+TEST_CASE("SOG loader maps log-scale codebooks and quaternion component order") {
+  const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
+  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "formats" / "sog" / "loader.cpp");
+
+  REQUIRE_FALSE(loader.empty());
+  CHECK(loader.find("return Normalize({q[1], q[2], q[3], q[0]});") != std::string::npos);
+  CHECK(loader.find("DecodeLogScaleValue(scaleCodebook[scales.value.rgba[o + 0]])") != std::string::npos);
+  CHECK(loader.find("DecodeLogScaleValue(scaleCodebook[scales.value.rgba[o + 1]])") != std::string::npos);
+  CHECK(loader.find("DecodeLogScaleValue(scaleCodebook[scales.value.rgba[o + 2]])") != std::string::npos);
+}
+
 TEST_CASE("background loader worker catches load materialization failures") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
   const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "loading.cpp");

@@ -101,6 +101,13 @@ float InverseSymmetricLog(float v) {
   return (v < 0.0f) ? -e : e;
 }
 
+float DecodeLogScaleValue(float raw) {
+  if (!std::isfinite(raw)) {
+    return 1e-4f;
+  }
+  return std::max(std::exp(std::clamp(raw, -14.0f, 8.0f)), 1e-4f);
+}
+
 Quat DecodeSogQuat(uint8_t px, uint8_t py, uint8_t pz, uint8_t tag) {
   if (tag < 252 || tag > 255) {
     return {};
@@ -119,7 +126,7 @@ Quat DecodeSogQuat(uint8_t px, uint8_t py, uint8_t pz, uint8_t tag) {
   q[map[mode][2]] = c;
   const float t = 1.0f - (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
   q[mode] = std::sqrt(std::max(0.0f, t));
-  return Normalize({q[0], q[1], q[2], q[3]});
+  return Normalize({q[1], q[2], q[3], q[0]});
 }
 
 float SigmoidInv(float y) {
@@ -461,9 +468,9 @@ StatusOr<GaussianSet> SogLoader::Load(const std::string& path, const std::string
     for (uint32_t i = 0; i < count; ++i) {
       const size_t o = static_cast<size_t>(i) * 4;
       set.gaussians[i].scale = {
-          scaleCodebook[scales.value.rgba[o + 0]],
-          scaleCodebook[scales.value.rgba[o + 1]],
-          scaleCodebook[scales.value.rgba[o + 2]],
+          DecodeLogScaleValue(scaleCodebook[scales.value.rgba[o + 0]]),
+          DecodeLogScaleValue(scaleCodebook[scales.value.rgba[o + 1]]),
+          DecodeLogScaleValue(scaleCodebook[scales.value.rgba[o + 2]]),
       };
     }
   }
