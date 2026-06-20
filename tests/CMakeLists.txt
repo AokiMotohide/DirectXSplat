@@ -10,7 +10,3 @@ add_subdirectory(runtime)
 if(DXSPLAT_BUILD_VIEWER)
   add_subdirectory(viewer)
 endif()
-
-if(TARGET directxsplat_examples_common)
-  add_subdirectory(examples)
-endif()

@@ -17,6 +17,7 @@ target_include_directories(DirectXSplatTests
   PRIVATE
     ${PROJECT_SOURCE_DIR}/directxsplat/src
     ${PROJECT_SOURCE_DIR}/directxsplat/src/core
+    ${PROJECT_SOURCE_DIR}/directxsplat/src/core/internal_headers
 )
 target_compile_definitions(DirectXSplatTests PRIVATE DIRECTXSPLAT_TEST_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(DirectXSplatTests PRIVATE cxx_std_20)

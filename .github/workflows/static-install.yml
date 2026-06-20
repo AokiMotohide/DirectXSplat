@@ -32,7 +32,6 @@ jobs:
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=ON
           -DDXSPLAT_BUILD_VIEWER=ON
-          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_GPU_TESTS=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
           -DDXSPLAT_WARNINGS_AS_ERRORS=ON
@@ -57,10 +56,12 @@ jobs:
           target_link_libraries(consumer PRIVATE DirectXSplat::DirectXSplat)
           '@ | Set-Content -Path (Join-Path $consumer "CMakeLists.txt") -NoNewline
           @'
-          #include <dxsplat/renderer.h>
+          #include <dxsplat/directxsplat.h>
           int main() {
-            dxsplat::Renderer renderer;
-            return renderer.IsDeviceLost() ? 1 : 0;
+            dxsplat::ViewerConfig config{};
+            config.width = 640;
+            config.height = 480;
+            return config.width == 640 && config.height == 480 ? 0 : 1;
           }
           '@ | Set-Content -Path (Join-Path $consumer "main.cpp") -NoNewline
           cmake -S $consumer -B "$env:RUNNER_TEMP/directxsplat-consumer-build" -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:RUNNER_TEMP/directxsplat-install"
@@ -84,7 +85,7 @@ jobs:
           if (-not (Test-Path "tests/CMakeLists.txt" -PathType Leaf)) {
             throw "Root tests/CMakeLists.txt is missing"
           }
-          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/platform", "directxsplat/src/shaders", "examples/common", "examples/minimal_viewer", "examples/offscreen_capture", "examples/external_d3d12_integration", "examples/scene_updates", "examples/gpu_resource_interop", "tests/directxsplat", "tests/platform", "tests/viewer", "tests/examples")
+          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/core/internal_headers", "directxsplat/src/platform", "directxsplat/src/shaders", "tests/directxsplat", "tests/platform", "tests/runtime", "tests/viewer")
           $missingDirs = $requiredDirs | Where-Object { -not (Test-Path $_ -PathType Container) }
           if ($missingDirs.Count -ne 0) {
             throw "Required repository folders are missing: $($missingDirs -join ', ')"
@@ -120,7 +121,6 @@ jobs:
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=OFF
           -DDXSPLAT_BUILD_VIEWER=OFF
-          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build library for install smoke
@@ -133,8 +133,8 @@ jobs:
         run: |
           $prefix = "$env:RUNNER_TEMP/directxsplat-package"
           $required = @(
-            "include/dxsplat/renderer.h",
-            "include/dxsplat/context.h",
+            "include/dxsplat/directxsplat.h",
+            "include/dxsplat/status.h",
             "lib/cmake/DirectXSplat/DirectXSplatConfig.cmake",
             "lib/cmake/DirectXSplat/DirectXSplatConfigVersion.cmake",
             "lib/cmake/DirectXSplat/DirectXSplatTargets.cmake"
@@ -146,4 +146,35 @@ jobs:
           $libraries = Get-ChildItem -Path (Join-Path $prefix "lib") -Filter "DirectXSplat.lib" -Recurse
           if ($libraries.Count -eq 0) {
             throw "Installed package did not contain DirectXSplat.lib"
+          }
+          $requiredHeaders = @(
+            "include/dxsplat/directxsplat.h",
+            "include/dxsplat/status.h"
+          )
+          $forbiddenHeaders = @(
+            "include/dxsplat/renderer.h",
+            "include/dxsplat/context.h",
+            "include/dxsplat/gpu_resources.h",
+            "include/dxsplat/io.h"
+          )
+          $missingHeaders = $requiredHeaders | Where-Object { -not (Test-Path (Join-Path $prefix $_) -PathType Leaf) }
+          if ($missingHeaders.Count -ne 0) {
+            throw "Installed package is missing public headers: $($missingHeaders -join ', ')"
+          }
+          $presentForbiddenHeaders = $forbiddenHeaders | Where-Object { Test-Path (Join-Path $prefix $_) -PathType Leaf }
+          if ($presentForbiddenHeaders.Count -ne 0) {
+            throw "Installed package contains removed SDK headers: $($presentForbiddenHeaders -join ', ')"
+          }
+          $installedHeaders = Get-ChildItem -Path (Join-Path $prefix "include/dxsplat") -Filter "*.h" -File | ForEach-Object { "include/dxsplat/$($_.Name)" }
+          $extraHeaders = $installedHeaders | Where-Object { $_ -notin $requiredHeaders }
+          if ($extraHeaders.Count -ne 0) {
+            throw "Installed package contains unexpected public headers: $($extraHeaders -join ', ')"
+          }
+          $forbiddenText = @("ID3D12", "RenderTargetBinding", "Renderer")
+          foreach ($header in $installedHeaders) {
+            $path = Join-Path $prefix $header
+            $matches = Select-String -Path $path -Pattern $forbiddenText -SimpleMatch
+            if ($matches.Count -ne 0) {
+              throw "Installed public header contains removed SDK text: $header"
+            }
           }

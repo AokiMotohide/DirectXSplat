@@ -112,6 +112,7 @@ target_include_directories(dxsplat
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/internal_headers
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
@@ -195,7 +196,11 @@ install(TARGETS dxsplat
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/dxsplat/directxsplat.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/dxsplat/status.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dxsplat
+)
 
 install(EXPORT DirectXSplatTargets
   FILE DirectXSplatTargets.cmake

@@ -1,8 +1,0 @@
-if(DXSPLAT_BUILD_LEGACY_EXAMPLES)
-  add_subdirectory(common)
-  add_subdirectory(minimal_viewer)
-  add_subdirectory(offscreen_capture)
-  add_subdirectory(external_d3d12_integration)
-  add_subdirectory(scene_updates)
-  add_subdirectory(gpu_resource_interop)
-endif()
