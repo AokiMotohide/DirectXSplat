@@ -11,7 +11,7 @@ This is a C++/Direct3D 12 library for rendering scenes captured via the techniqu
 Modules include:
 
 - `directxsplat`, the core library for loading scenes, uploading splats, managing residency, sorting, and rendering a frame.
-- `shaders`, the HLSL compute/raster shader code used by the renderer.
+- `directxsplat/src/shaders`, the HLSL compute/raster shader code used by the renderer.
 - `directxsplat/src/platform`, internal D3D12/Win32 runtime code used by the viewer and tests.
 - `directxsplat/src/app`, the interactive viewer for opening scenes and inspecting renderer stats.
 - `examples/minimal_viewer`, a smaller windowed integration example without the full viewer UI.

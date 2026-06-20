@@ -60,8 +60,10 @@ TEST_CASE("CPU diagnostic parameter block layout remains stable") {
 
 TEST_CASE("HLSL keeps the renderer-visible packed Gaussian layout fields") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
-  const std::string compute = ReadTextFile(root / "shaders" / "gaussian_compute.hlsl");
-  const std::string raster = ReadTextFile(root / "shaders" / "gaussian_raster.hlsl");
+  const std::string compute =
+      ReadTextFile(root / "directxsplat" / "src" / "shaders" / "gaussian_compute.hlsl");
+  const std::string raster =
+      ReadTextFile(root / "directxsplat" / "src" / "shaders" / "gaussian_raster.hlsl");
 
   REQUIRE_FALSE(compute.empty());
   REQUIRE_FALSE(raster.empty());
@@ -79,8 +81,10 @@ TEST_CASE("HLSL keeps the renderer-visible packed Gaussian layout fields") {
 
 TEST_CASE("Shaders stay final-only") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
-  const std::string compute = ReadTextFile(root / "shaders" / "gaussian_compute.hlsl");
-  const std::string raster = ReadTextFile(root / "shaders" / "gaussian_raster.hlsl");
+  const std::string compute =
+      ReadTextFile(root / "directxsplat" / "src" / "shaders" / "gaussian_compute.hlsl");
+  const std::string raster =
+      ReadTextFile(root / "directxsplat" / "src" / "shaders" / "gaussian_raster.hlsl");
 
   REQUIRE_FALSE(compute.empty());
   REQUIRE_FALSE(raster.empty());
@@ -92,7 +96,8 @@ TEST_CASE("Shaders stay final-only") {
 
 TEST_CASE("Renderer residency cache keys include view-space depth convention") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
-  const std::string renderer = ReadTextFile(root / "directxsplat" / "src" / "renderer" / "Renderer.cpp");
+  const std::string renderer =
+      ReadTextFile(root / "directxsplat" / "src" / "core" / "renderer" / "Renderer.cpp");
 
   REQUIRE_FALSE(renderer.empty());
   CHECK(renderer.find("HashBytes(&input.settings.positiveViewSpaceZ") != std::string::npos);
@@ -101,7 +106,7 @@ TEST_CASE("Renderer residency cache keys include view-space depth convention") {
 TEST_CASE("raw PLY fallback budgets stay bounded") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
   const std::string reader =
-      ReadTextFile(root / "directxsplat" / "src" / "io" / "formats" / "ply" / "raw" / "ply_reader.cpp");
+      ReadTextFile(root / "directxsplat" / "src" / "core" / "io" / "formats" / "ply" / "raw" / "ply_reader.cpp");
 
   REQUIRE_FALSE(reader.empty());
   CHECK(reader.find("kMaxPlyFileBytes = 256ull * 1024ull * 1024ull") != std::string::npos);
@@ -110,7 +115,8 @@ TEST_CASE("raw PLY fallback budgets stay bounded") {
 
 TEST_CASE("fast PLY path rejects variable rows before fixed body footprint") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
-  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "formats" / "ply" / "loader.cpp");
+  const std::string loader =
+      ReadTextFile(root / "directxsplat" / "src" / "core" / "io" / "formats" / "ply" / "loader.cpp");
 
   REQUIRE_FALSE(loader.empty());
   const size_t fixedRows = loader.find("Status fixedRowsStatus = ValidateFastPlyFixedRows(header);");
@@ -123,7 +129,8 @@ TEST_CASE("fast PLY path rejects variable rows before fixed body footprint") {
 
 TEST_CASE("SOG loader maps log-scale codebooks and quaternion component order") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
-  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "formats" / "sog" / "loader.cpp");
+  const std::string loader =
+      ReadTextFile(root / "directxsplat" / "src" / "core" / "io" / "formats" / "sog" / "loader.cpp");
 
   REQUIRE_FALSE(loader.empty());
   CHECK(loader.find("return Normalize({q[1], q[2], q[3], q[0]});") != std::string::npos);
@@ -134,7 +141,7 @@ TEST_CASE("SOG loader maps log-scale codebooks and quaternion component order") 
 
 TEST_CASE("background loader worker catches load materialization failures") {
   const std::filesystem::path root = std::filesystem::path(DIRECTXSPLAT_TEST_ASSET_DIR).parent_path().parent_path();
-  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "io" / "loading.cpp");
+  const std::string loader = ReadTextFile(root / "directxsplat" / "src" / "core" / "io" / "loading.cpp");
 
   REQUIRE_FALSE(loader.empty());
   CHECK(loader.find("item = makeErrorItem(index, \"scene traversal allocation failed\");") != std::string::npos);

@@ -84,7 +84,7 @@ jobs:
           if (-not (Test-Path "tests/CMakeLists.txt" -PathType Leaf)) {
             throw "Root tests/CMakeLists.txt is missing"
           }
-          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/platform", "examples/common", "examples/minimal_viewer", "examples/offscreen_capture", "examples/external_d3d12_integration", "examples/scene_updates", "examples/gpu_resource_interop", "shaders", "tests/directxsplat", "tests/platform", "tests/viewer", "tests/examples")
+          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/platform", "directxsplat/src/shaders", "examples/common", "examples/minimal_viewer", "examples/offscreen_capture", "examples/external_d3d12_integration", "examples/scene_updates", "examples/gpu_resource_interop", "tests/directxsplat", "tests/platform", "tests/viewer", "tests/examples")
           $missingDirs = $requiredDirs | Where-Object { -not (Test-Path $_ -PathType Container) }
           if ($missingDirs.Count -ne 0) {
             throw "Required repository folders are missing: $($missingDirs -join ', ')"
