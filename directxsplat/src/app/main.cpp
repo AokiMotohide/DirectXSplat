@@ -48,12 +48,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     return 0;
   }
 
+  ViewerConfig config{};
+  config.initialScenePath = parse.value.scenePath.value_or("");
+  config.sceneFolderPath = parse.value.folderTraversalPath.value_or("");
+  config.sourceImageDirectory = parse.value.imagePathOverride.value_or("");
+  config.width = parse.value.renderWidthOverride.value_or(1600);
+  config.height = parse.value.renderHeightOverride.value_or(900);
+
   Application app;
-  const Status init = app.Initialize(parse.value);
+  const Status init = app.Initialize(config);
   if (!init.ok) {
     MessageBoxA(nullptr, init.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
     return 1;
   }
 
-  return app.Run();
+  const Status run = app.Run();
+  if (!run.ok) {
+    MessageBoxA(nullptr, run.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
+    return 1;
+  }
+  return 0;
 }

@@ -40,21 +40,20 @@ set_property(GLOBAL PROPERTY DIRECTXSPLAT_DXCOMPILER_DLL "${DIRECTXSPLAT_DXCOMPI
 set_property(GLOBAL PROPERTY DIRECTXSPLAT_DXIL_DLL "${DIRECTXSPLAT_DXIL_DLL}")
 
 file(GLOB_RECURSE DIRECTXSPLAT_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
-set(DXSPLAT_APP_SOURCES
-  src/app/Application.cpp
-  src/app/CameraController.cpp
-  src/app/platform/Win32Window.cpp
-  src/app/scene/SceneManager.cpp
-  src/app/tools/CliOptions.cpp
-  src/app/tools/ScreenshotWriter.cpp
-  src/app/ui/UiLayer.cpp
-  src/app/metrics/ImageMetrics.cpp
-)
-set(DXSPLAT_APP_SOURCE_PATHS ${DXSPLAT_APP_SOURCES})
-list(TRANSFORM DXSPLAT_APP_SOURCE_PATHS PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
-list(REMOVE_ITEM DIRECTXSPLAT_SOURCES
-  ${DXSPLAT_APP_SOURCE_PATHS}
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/app/main.cpp
+list(REMOVE_ITEM DIRECTXSPLAT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/main.cpp)
+
+get_property(DIRECTXSPLAT_IMGUI_SOURCE_DIR GLOBAL PROPERTY DIRECTXSPLAT_IMGUI_SOURCE_DIR)
+if(NOT DIRECTXSPLAT_IMGUI_SOURCE_DIR)
+  message(FATAL_ERROR "DirectXSplat requires ImGui sources to build the owned viewer runtime.")
+endif()
+set(DIRECTXSPLAT_IMGUI_SOURCES
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/imgui.cpp
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/imgui_draw.cpp
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/imgui_tables.cpp
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/imgui_demo.cpp
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
+  ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp
 )
 set(DIRECTXSPLAT_THIRDPARTY_SOURCES
   ${DIRECTXSPLAT_ROOT_DIR}/3rdparty/miniz.c
@@ -62,10 +61,10 @@ set(DIRECTXSPLAT_THIRDPARTY_SOURCES
   ${DIRECTXSPLAT_ROOT_DIR}/3rdparty/miniz_tinfl.c
   ${DIRECTXSPLAT_ROOT_DIR}/3rdparty/miniz_zip.c
 )
-list(APPEND DIRECTXSPLAT_SOURCES ${DIRECTXSPLAT_THIRDPARTY_SOURCES})
+list(APPEND DIRECTXSPLAT_SOURCES ${DIRECTXSPLAT_THIRDPARTY_SOURCES} ${DIRECTXSPLAT_IMGUI_SOURCES})
 
 if(MSVC)
-  set_source_files_properties(${DIRECTXSPLAT_THIRDPARTY_SOURCES} PROPERTIES COMPILE_OPTIONS /W0)
+  set_source_files_properties(${DIRECTXSPLAT_THIRDPARTY_SOURCES} ${DIRECTXSPLAT_IMGUI_SOURCES} PROPERTIES COMPILE_OPTIONS /W0)
 endif()
 
 set(DIRECTXSPLAT_EMBEDDED_SHADER_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/EmbeddedShaders.h)
@@ -110,6 +109,7 @@ target_include_directories(dxsplat
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_BINARY_DIR}/generated
@@ -119,6 +119,8 @@ target_include_directories(dxsplat SYSTEM
   PRIVATE
     ${DIRECTXSPLAT_ROOT_DIR}/3rdparty
     ${DIRECTXSPLAT_3RDPARTY_DIR}
+    ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}
+    ${DIRECTXSPLAT_IMGUI_SOURCE_DIR}/backends
 )
 
 if(NOT TARGET nlohmann_json::nlohmann_json)
@@ -137,6 +139,7 @@ target_compile_definitions(dxsplat
     UNICODE
     _UNICODE
     WIN32_LEAN_AND_MEAN
+    IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
   PUBLIC
     NOMINMAX
 )
@@ -150,18 +153,16 @@ target_link_libraries(dxsplat
     dxcompiler
     windowscodecs
     ole32
+    dwmapi
+    shell32
+    comdlg32
 )
 
 if(DXSPLAT_BUILD_VIEWER)
   if(NOT WIN32)
     message(STATUS "directxsplat_viewer skipped: requires WIN32")
-  elseif(NOT TARGET imgui)
-    message(STATUS "directxsplat_viewer skipped: imgui target not available")
   else()
-    add_executable(directxsplat_viewer WIN32
-      src/app/main.cpp
-      ${DXSPLAT_APP_SOURCES}
-    )
+    add_executable(directxsplat_viewer WIN32 src/app/main.cpp)
 
     set_target_properties(directxsplat_viewer PROPERTIES OUTPUT_NAME DirectXSplatViewer)
 
@@ -178,14 +179,6 @@ if(DXSPLAT_BUILD_VIEWER)
     target_link_libraries(directxsplat_viewer
       PRIVATE
         DirectXSplat::DirectXSplat
-        imgui
-        d3d12
-        dxgi
-        dxguid
-        d3dcompiler
-        dwmapi
-        shell32
-        ole32
     )
 
     if(COMMAND directxsplat_stage_dxc_runtime)

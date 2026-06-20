@@ -5,6 +5,7 @@ endfunction()
 
 add_subdirectory(directxsplat)
 add_subdirectory(platform)
+add_subdirectory(runtime)
 
 if(DXSPLAT_BUILD_VIEWER)
   add_subdirectory(viewer)

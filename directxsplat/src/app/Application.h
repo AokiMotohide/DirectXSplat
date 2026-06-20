@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -7,12 +8,12 @@
 #include "app/CameraController.h"
 #include "platform/SwapchainContext.h"
 #include "dxsplat/context.h"
+#include "dxsplat/directxsplat.h"
 #include "dxsplat/io.h"
 #include "dxsplat/renderer.h"
 #include "dxsplat/settings.h"
 #include "platform/Win32Window.h"
 #include "scene/SceneManager.h"
-#include "tools/CliOptions.h"
 #include "tools/ScreenshotWriter.h"
 #include "ui/UiLayer.h"
 
@@ -23,12 +24,13 @@ class Application {
   Application();
   ~Application();
 
-  Status Initialize(const CliOptions& cli);
-  int Run();
+  Status Initialize(const ViewerConfig& config);
+  Status Load(const std::filesystem::path& scenePath);
+  Status Run();
+  void RequestClose();
   void Shutdown();
 
  private:
-  Status LoadScene(const std::string& path);
   Status OpenSceneDialogAndLoad();
   Status SaveScreenshotDialog();
   Status SetExportDirectoryDialog();
@@ -46,7 +48,7 @@ class Application {
 
   std::wstring OpenFileDialog(const wchar_t* filter, const wchar_t* title, bool saveMode);
 
-  CliOptions cli_;
+  ViewerConfig config_;
 
   Win32Window window_;
   internal::SwapchainContext d3d_;

@@ -79,25 +79,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-if(DXSPLAT_BUILD_VIEWER AND WIN32 AND MSVC)
+if(WIN32 AND MSVC)
   FetchContent_Declare(
     imgui
     URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.6.zip
   )
   FetchContent_MakeAvailable(imgui)
-
-  add_library(imgui STATIC
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
-  )
-  target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-  target_compile_definitions(imgui PUBLIC IMGUI_IMPL_WIN32_DISABLE_GAMEPAD)
-  target_link_libraries(imgui PUBLIC d3d12 dxgi)
+  set_property(GLOBAL PROPERTY DIRECTXSPLAT_IMGUI_SOURCE_DIR "${imgui_SOURCE_DIR}")
 endif()
 
 if(DXSPLAT_BUILD_TESTS)

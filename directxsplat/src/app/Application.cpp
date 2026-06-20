@@ -1,7 +1,6 @@
 #include "app/Application.h"
 
 #include <Windows.h>
-#include <shellapi.h>
 #include <commdlg.h>
 #include <shlobj.h>
 
@@ -22,37 +21,15 @@ namespace dxsplat {
 
 namespace fs = std::filesystem;
 
-namespace {
-
-std::vector<std::string> GetCommandLineArgsUtf8() {
-  int argc = 0;
-  LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-  std::vector<std::string> out;
-  for (int i = 1; i < argc; ++i) {
-    const int bytes = WideCharToMultiByte(CP_UTF8, 0, argv[i], -1, nullptr, 0, nullptr, nullptr);
-    std::string s(static_cast<size_t>(bytes > 0 ? bytes - 1 : 0), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, argv[i], -1, s.data(), bytes, nullptr, nullptr);
-    out.push_back(std::move(s));
-  }
-  LocalFree(argv);
-  return out;
-}
-
-}  
-
 Application::Application() = default;
 
 Application::~Application() { Shutdown(); }
 
-Status Application::Initialize(const CliOptions& cli) {
-  cli_ = cli;
+Status Application::Initialize(const ViewerConfig& config) {
+  config_ = config;
 
-  uint32_t startupWidth = 1600;
-  uint32_t startupHeight = 900;
-  if (cli_.renderWidthOverride.has_value() && cli_.renderHeightOverride.has_value()) {
-    startupWidth = std::max<uint32_t>(*cli_.renderWidthOverride, 320u);
-    startupHeight = std::max<uint32_t>(*cli_.renderHeightOverride, 240u);
-  }
+  const uint32_t startupWidth = std::max<uint32_t>(config_.width, 1u);
+  const uint32_t startupHeight = std::max<uint32_t>(config_.height, 1u);
 
   if (!window_.Create(L"DirectXSplat", startupWidth, startupHeight)) {
     return Status::Error("failed to create window (win32=" + std::to_string(window_.LastCreateError()) + ")");
@@ -128,14 +105,12 @@ Status Application::Initialize(const CliOptions& cli) {
                       d3d_.ImGuiSrvHeap()->GetGPUDescriptorHandleForHeapStart());
   imguiInitialized_ = true;
 
-  if (cli_.renderWidthOverride.has_value()) {
-    renderWidthOverride_ = *cli_.renderWidthOverride;
-  }
-  if (cli_.renderHeightOverride.has_value()) {
-    renderHeightOverride_ = *cli_.renderHeightOverride;
-  }
-  if (cli_.scenePath.has_value()) {
-    status = LoadScene(*cli_.scenePath);
+  renderWidthOverride_ = config_.width;
+  renderHeightOverride_ = config_.height;
+  vsyncEnabled_ = config_.vsync;
+
+  if (!config_.initialScenePath.empty()) {
+    status = Load(config_.initialScenePath);
     if (!status.ok) {
       statusMessage_ = status.message;
     }
@@ -143,14 +118,15 @@ Status Application::Initialize(const CliOptions& cli) {
     OpenSceneDialogAndLoad();
   }
 
-  if (cli_.folderTraversalPath.has_value()) {
+  if (!config_.sceneFolderPath.empty()) {
+    const std::string folderPath = config_.sceneFolderPath.string();
     const Status traversalStatus =
-        traversalLoader_.Initialize(*cli_.folderTraversalPath, SceneLoadOptions{cli_.imagePathOverride.value_or("")});
+        traversalLoader_.Initialize(folderPath, SceneLoadOptions{config_.sourceImageDirectory.string()});
     if (!traversalStatus.ok) {
       statusMessage_ = traversalStatus.message;
     } else {
       traversalEnabled_ = traversalLoader_.SceneCount() > 0;
-      traversalFolderPath_ = *cli_.folderTraversalPath;
+      traversalFolderPath_ = folderPath;
       if (traversalEnabled_) {
         RequestTraversalScene(0, true);
       }
@@ -160,7 +136,7 @@ Status Application::Initialize(const CliOptions& cli) {
   return Status::Ok();
 }
 
-int Application::Run() {
+Status Application::Run() {
   auto previous = std::chrono::steady_clock::now();
 
   while (true) {
@@ -388,8 +364,10 @@ int Application::Run() {
     }
   }
 
-  return 0;
+  return Status::Ok();
 }
+
+void Application::RequestClose() { window_.RequestClose(); }
 
 void Application::Shutdown() {
   traversalLoader_.Shutdown();
@@ -425,8 +403,9 @@ void Application::Shutdown() {
   window_.Destroy();
 }
 
-Status Application::LoadScene(const std::string& path) {
-  auto sceneResult = LoadSceneFromFile(path, SceneLoadOptions{cli_.imagePathOverride.value_or("")});
+Status Application::Load(const std::filesystem::path& scenePath) {
+  const std::string path = scenePath.string();
+  auto sceneResult = LoadSceneFromFile(path, SceneLoadOptions{config_.sourceImageDirectory.string()});
   if (!sceneResult.ok()) {
     return Status::Error(sceneResult.status.message);
   }
@@ -459,7 +438,7 @@ Status Application::OpenSceneDialogAndLoad() {
   std::string utf8(static_cast<size_t>(bytes > 0 ? bytes - 1 : 0), '\0');
   WideCharToMultiByte(CP_UTF8, 0, file.c_str(), -1, utf8.data(), bytes, nullptr, nullptr);
 
-  Status status = LoadScene(utf8);
+  Status status = Load(fs::path(utf8));
   if (!status.ok) {
     statusMessage_ = status.message;
   }
