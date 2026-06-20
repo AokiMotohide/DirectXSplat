@@ -13,7 +13,7 @@ Modules include:
 - `directxsplat`, the core library for loading scenes, uploading splats, managing residency, sorting, and rendering a frame.
 - `shaders`, the HLSL compute/raster shader code used by the renderer.
 - `directxsplat/src/platform`, internal D3D12/Win32 runtime code used by the viewer and tests.
-- `examples/imgui_viewer`, the interactive sample app for opening scenes and inspecting renderer stats.
+- `directxsplat/src/app`, the interactive viewer for opening scenes and inspecting renderer stats.
 - `examples/minimal_viewer`, a smaller windowed integration example without the full viewer UI.
 - `examples/offscreen_capture`, a small example for rendering a scene to an image.
 - `examples/scene_updates`, `examples/gpu_resource_interop`, and `examples/external_d3d12_integration`, focused examples for the public mutation, resource lease, and host-D3D12 integration APIs.
@@ -32,7 +32,7 @@ ctest --test-dir build -C Release --output-on-failure
 Run the ImGui viewer:
 
 ```powershell
-.\build\bin\Release\DirectXSplatImGuiViewer.exe "C:\path\to\point_cloud.ply"
+.\build\bin\Release\DirectXSplatViewer.exe "C:\path\to\point_cloud.ply"
 ```
 
 Build only the library:
@@ -243,7 +243,7 @@ Use `GetUploadedSceneGpuResources` only for a non-leasing snapshot; use `Acquire
 
 | Target | Executable | Purpose |
 |---|---|---|
-| `imgui_viewer` | `DirectXSplatImGuiViewer.exe` | Interactive viewer. |
+| `directxsplat_viewer` | `DirectXSplatViewer.exe` | Interactive viewer. |
 | `minimal_viewer` | `DirectXSplatMinimalViewer.exe` | Small windowed integration example. |
 | `offscreen_capture` | `DirectXSplatOffscreenCapture.exe` | Render one image to PPM. |
 | `external_d3d12_integration` | `DirectXSplatExternalD3D12Integration.exe` | Host-owned D3D12 setup. |

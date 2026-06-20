@@ -7,7 +7,7 @@ add_subdirectory(directxsplat)
 add_subdirectory(platform)
 
 if(DXSPLAT_BUILD_VIEWER)
-  add_subdirectory(imgui_viewer)
+  add_subdirectory(viewer)
 endif()
 
 if(TARGET directxsplat_examples_common)

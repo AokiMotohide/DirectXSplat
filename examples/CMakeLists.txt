@@ -6,7 +6,3 @@ if(DXSPLAT_BUILD_LEGACY_EXAMPLES)
   add_subdirectory(scene_updates)
   add_subdirectory(gpu_resource_interop)
 endif()
-
-if(DXSPLAT_BUILD_VIEWER)
-  add_subdirectory(imgui_viewer)
-endif()

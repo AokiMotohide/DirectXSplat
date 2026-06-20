@@ -110,7 +110,7 @@ endif()
 
 add_subdirectory(directxsplat)
 
-if(DXSPLAT_BUILD_VIEWER OR DXSPLAT_BUILD_LEGACY_EXAMPLES)
+if(DXSPLAT_BUILD_LEGACY_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
