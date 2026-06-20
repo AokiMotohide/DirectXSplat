@@ -12,7 +12,7 @@
 
 #include "dxsplat/status.h"
 
-namespace appcommon {
+namespace dxsplat::internal {
 
 class SwapchainContext {
  public:
@@ -93,4 +93,4 @@ class SwapchainContext {
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> imguiSrvHeap_;
 };
 
-}  // namespace appcommon
+}  // namespace dxsplat::internal

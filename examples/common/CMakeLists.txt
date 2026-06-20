@@ -7,6 +7,7 @@ add_library(directxsplat_examples_common
 target_include_directories(directxsplat_examples_common
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/directxsplat/src
 )
 
 target_compile_definitions(directxsplat_examples_common PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -17,7 +18,6 @@ endif()
 
 target_link_libraries(directxsplat_examples_common
   PUBLIC
-    app_common
     DirectXSplat::DirectXSplat
     d3d12
     dxgi

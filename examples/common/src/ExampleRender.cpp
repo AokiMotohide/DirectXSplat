@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "appcommon/image.h"
+#include "platform/Image.h"
 #include "dxsplat/bounding.h"
 
 namespace dxsplat::examples {

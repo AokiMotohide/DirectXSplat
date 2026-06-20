@@ -4,12 +4,9 @@ function(directxsplat_add_test_executable target_name labels)
 endfunction()
 
 add_subdirectory(directxsplat)
+add_subdirectory(platform)
 
-if(DXSPLAT_BUILD_APPCOMMON)
-  add_subdirectory(appcommon)
-endif()
-
-if(DXSPLAT_BUILD_APPCOMMON)
+if(DXSPLAT_BUILD_VIEWER)
   add_subdirectory(imgui_viewer)
 endif()
 

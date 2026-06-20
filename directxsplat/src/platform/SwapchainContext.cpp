@@ -1,11 +1,11 @@
-#include "appcommon/swapchain_context.h"
+#include "platform/SwapchainContext.h"
 
 #include <algorithm>
 #include <sstream>
 
 #include <d3d12sdklayers.h>
 
-namespace appcommon {
+namespace dxsplat::internal {
 
 namespace {
 
@@ -45,7 +45,7 @@ bool IsDeviceRemovalFailure(HRESULT hr) {
 
 constexpr DWORD kFenceWaitPollMs = 50;
 
-}  
+}
 
 dxsplat::Status SwapchainContext::Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer) {
   hwnd_ = hwnd;
@@ -593,4 +593,4 @@ std::string SwapchainContext::DebugMessages() const {
   return out;
 }
 
-}  // namespace appcommon
+}  // namespace dxsplat::internal

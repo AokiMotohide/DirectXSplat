@@ -1,11 +1,11 @@
-#include "appcommon/image.h"
+#include "platform/Image.h"
 
 #include <fstream>
 #include <limits>
 #include <new>
 #include <stdexcept>
 
-namespace appcommon {
+namespace dxsplat::internal {
 
 namespace {
 
@@ -115,4 +115,4 @@ dxsplat::StatusOr<ImageRgba8> LoadPpm(const std::string& path) {
   return dxsplat::StatusOr<ImageRgba8>::Ok(std::move(image));
 }
 
-}  // namespace appcommon
+}  // namespace dxsplat::internal

@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "appcommon/image.h"
+#include "platform/Image.h"
 
 namespace dxsplat {
 
@@ -62,7 +62,7 @@ Status ValidateCaptureLayout(uint32_t width,
 
 }
 
-Status ScreenshotWriter::QueueBackBufferPpm(appcommon::SwapchainContext& context, const std::string& outputPath) {
+Status ScreenshotWriter::QueueBackBufferPpm(internal::SwapchainContext& context, const std::string& outputPath) {
   if (outputPath.empty()) {
     return Status::Error("invalid screenshot path");
   }
@@ -205,7 +205,7 @@ Status ScreenshotWriter::ResolvePendingCapture(std::string* completedPath) {
     return Status::Error("failed mapping screenshot readback");
   }
 
-  appcommon::ImageRgba8 image{};
+  internal::ImageRgba8 image{};
   image.width = pending_.width;
   image.height = pending_.height;
   Status copyStatus = Status::Ok();
@@ -242,7 +242,7 @@ Status ScreenshotWriter::ResolvePendingCapture(std::string* completedPath) {
   }
   pending_ = {};
 
-  Status save = appcommon::SavePpm(image, outputPath);
+  Status save = internal::SavePpm(image, outputPath);
   if (!save.ok) {
     return save;
   }

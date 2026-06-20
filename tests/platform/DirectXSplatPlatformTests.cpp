@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "appcommon/image.h"
-#include "appcommon/swapchain_context.h"
+#include "platform/Image.h"
+#include "platform/SwapchainContext.h"
 
 namespace dxsplat {
 namespace {
@@ -26,14 +26,14 @@ void WriteFile(const std::filesystem::path& path, const std::string& text) {
 TEST_CASE("PPM loader and writer reject malformed images") {
   const std::filesystem::path truncated = TempPath("directxsplat_truncated.ppm");
   WriteFile(truncated, "P6\n2 2\n255\nabc");
-  const auto loaded = appcommon::LoadPpm(truncated.string());
+  const auto loaded = internal::LoadPpm(truncated.string());
   CHECK_FALSE(loaded.ok());
 
-  appcommon::ImageRgba8 invalid{};
+  internal::ImageRgba8 invalid{};
   invalid.width = 70000u;
   invalid.height = 1u;
   invalid.pixels.resize(4u);
-  CHECK_FALSE(appcommon::SavePpm(invalid, TempPath("directxsplat_invalid.ppm").string()).ok);
+  CHECK_FALSE(internal::SavePpm(invalid, TempPath("directxsplat_invalid.ppm").string()).ok);
 
   std::error_code ec;
   std::filesystem::remove(truncated, ec);
@@ -43,7 +43,7 @@ TEST_CASE("PPM loader and writer reject malformed images") {
 TEST_CASE("PPM loader and writer roundtrip deterministic RGBA images") {
   const std::filesystem::path path = TempPath("directxsplat_roundtrip.ppm");
 
-  appcommon::ImageRgba8 image{};
+  internal::ImageRgba8 image{};
   image.width = 2u;
   image.height = 2u;
   image.pixels = {
@@ -53,8 +53,8 @@ TEST_CASE("PPM loader and writer roundtrip deterministic RGBA images") {
       10u, 20u, 30u, 0u,
   };
 
-  REQUIRE(appcommon::SavePpm(image, path.string()).ok);
-  const auto loaded = appcommon::LoadPpm(path.string());
+  REQUIRE(internal::SavePpm(image, path.string()).ok);
+  const auto loaded = internal::LoadPpm(path.string());
   REQUIRE(loaded.ok());
   CHECK(loaded.value.width == 2u);
   CHECK(loaded.value.height == 2u);
@@ -92,14 +92,14 @@ TEST_CASE("PPM loader rejects invalid header matrix") {
   for (size_t i = 0; i < cases.size(); ++i) {
     const std::filesystem::path path = dir / ("case_" + std::to_string(i) + ".ppm");
     WriteFile(path, cases[i]);
-    CHECK_FALSE(appcommon::LoadPpm(path.string()).ok());
+    CHECK_FALSE(internal::LoadPpm(path.string()).ok());
   }
 
   std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("SwapchainContext uninitialized public calls fail without crashing") {
-  appcommon::SwapchainContext context;
+  internal::SwapchainContext context;
   CHECK_FALSE(context.BeginFrame().ok);
   CHECK_FALSE(context.EndFrame(false).ok);
   CHECK_FALSE(context.Resize(16, 16).ok);
@@ -113,7 +113,7 @@ TEST_CASE("SwapchainContext uninitialized public calls fail without crashing") {
 }
 
 TEST_CASE("SwapchainContext queue-lost notification disables submission") {
-  appcommon::SwapchainContext context;
+  internal::SwapchainContext context;
   context.NotifyQueueLost();
   CHECK_FALSE(context.BeginFrame().ok);
   CHECK_FALSE(context.EndFrame(false).ok);

@@ -17,6 +17,7 @@ set_target_properties(directxsplat_viewer PROPERTIES OUTPUT_NAME DirectXSplatVie
 target_include_directories(directxsplat_viewer
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/directxsplat/src
 )
 
 if(COMMAND directxsplat_apply_project_warnings)
@@ -25,7 +26,6 @@ endif()
 
 target_link_libraries(directxsplat_viewer
   PRIVATE
-    app_common
     DirectXSplat::DirectXSplat
     imgui
     d3d12

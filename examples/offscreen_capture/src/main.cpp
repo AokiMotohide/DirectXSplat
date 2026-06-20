@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "appcommon/image.h"
+#include "platform/Image.h"
 #include "dxsplat/context.h"
 #include "dxsplat/renderer.h"
 #include "dxsplat_examples/ExampleArgs.h"
@@ -70,14 +70,14 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  appcommon::ImageRgba8 image;
+  internal::ImageRgba8 image;
   status = device.ReadbackImage(target, image);
   if (!status.ok) {
     std::cerr << status.message << "\n";
     return 1;
   }
 
-  status = appcommon::SavePpm(image, parsed.value.outputPath);
+  status = internal::SavePpm(image, parsed.value.outputPath);
   if (!status.ok) {
     std::cerr << status.message << "\n";
     return 1;

@@ -6,7 +6,7 @@
 
 #include "dxsplat/status.h"
 
-namespace appcommon {
+namespace dxsplat::internal {
 
 struct ImageRgba8 {
   uint32_t width = 0;
@@ -19,4 +19,4 @@ struct ImageRgba8 {
 dxsplat::Status SavePpm(const ImageRgba8& image, const std::string& path);
 dxsplat::StatusOr<ImageRgba8> LoadPpm(const std::string& path);
 
-}  // namespace appcommon
+}  // namespace dxsplat::internal

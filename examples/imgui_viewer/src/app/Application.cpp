@@ -122,7 +122,7 @@ Status Application::Initialize(const CliOptions& cli) {
   colors[ImGuiCol_PlotHistogram] = ImVec4(0.91f, 0.70f, 0.02f, 1.0f);
 
   ImGui_ImplWin32_Init(window_.Hwnd());
-  ImGui_ImplDX12_Init(d3d_.Device(), appcommon::SwapchainContext::kFrameCount, DXGI_FORMAT_R8G8B8A8_UNORM,
+  ImGui_ImplDX12_Init(d3d_.Device(), internal::SwapchainContext::kFrameCount, DXGI_FORMAT_R8G8B8A8_UNORM,
                       d3d_.ImGuiSrvHeap(),
                       d3d_.ImGuiSrvHeap()->GetCPUDescriptorHandleForHeapStart(),
                       d3d_.ImGuiSrvHeap()->GetGPUDescriptorHandleForHeapStart());

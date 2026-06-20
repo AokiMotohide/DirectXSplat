@@ -91,7 +91,7 @@ TEST_CASE("empty scene copy keeps upload format metadata without chunks") {
 
 TEST_CASE("example readback rejects malformed target footprints") {
   D3D12ExampleDevice device;
-  appcommon::ImageRgba8 image;
+  internal::ImageRgba8 image;
   OffscreenTarget target{};
   target.width = 4;
   target.height = 4;

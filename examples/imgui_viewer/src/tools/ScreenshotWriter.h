@@ -5,14 +5,14 @@
 
 #include <wrl/client.h>
 
-#include "appcommon/swapchain_context.h"
+#include "platform/SwapchainContext.h"
 #include "dxsplat/status.h"
 
 namespace dxsplat {
 
 class ScreenshotWriter {
  public:
-  Status QueueBackBufferPpm(appcommon::SwapchainContext& context, const std::string& outputPath);
+  Status QueueBackBufferPpm(internal::SwapchainContext& context, const std::string& outputPath);
   Status ResolvePendingCapture(std::string* completedPath = nullptr);
   bool HasPendingCapture() const;
 

@@ -69,7 +69,7 @@ jobs:
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
           -C ${{ matrix.config }}
-          -R "DirectXSplatTests|AppCommonTests"
+          -R "DirectXSplatTests|DirectXSplatPlatformTests"
           --output-on-failure
           --no-tests=error
 

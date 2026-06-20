@@ -1,6 +1,6 @@
 #pragma once
 
-#include "appcommon/image.h"
+#include "platform/Image.h"
 
 namespace dxsplat {
 
@@ -11,7 +11,7 @@ struct ImageComparison {
   double flipLike = 0.0;
 };
 
-ImageComparison CompareImages(const appcommon::ImageRgba8& a, const appcommon::ImageRgba8& b);
-appcommon::ImageRgba8 BuildDiffImage(const appcommon::ImageRgba8& a, const appcommon::ImageRgba8& b);
+ImageComparison CompareImages(const internal::ImageRgba8& a, const internal::ImageRgba8& b);
+internal::ImageRgba8 BuildDiffImage(const internal::ImageRgba8& a, const internal::ImageRgba8& b);
 
 }  // namespace dxsplat

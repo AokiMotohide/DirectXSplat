@@ -3,7 +3,7 @@
 
 #include <filesystem>
 
-#include "appcommon/swapchain_context.h"
+#include "platform/SwapchainContext.h"
 #include "tools/ScreenshotWriter.h"
 
 namespace dxsplat {
@@ -17,7 +17,7 @@ std::filesystem::path TempPath(const char* name) {
 
 TEST_CASE("Screenshot writer rejects invalid capture contexts without pending work") {
   ScreenshotWriter writer;
-  appcommon::SwapchainContext context;
+  internal::SwapchainContext context;
   CHECK_FALSE(writer.QueueBackBufferPpm(context, "").ok);
   CHECK_FALSE(writer.QueueBackBufferPpm(context, TempPath("directxsplat_capture.ppm").string()).ok);
   CHECK_FALSE(writer.HasPendingCapture());

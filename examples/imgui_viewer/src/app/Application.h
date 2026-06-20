@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "app/CameraController.h"
-#include "appcommon/swapchain_context.h"
+#include "platform/SwapchainContext.h"
 #include "dxsplat/context.h"
 #include "dxsplat/io.h"
 #include "dxsplat/renderer.h"
@@ -49,7 +49,7 @@ class Application {
   CliOptions cli_;
 
   Win32Window window_;
-  appcommon::SwapchainContext d3d_;
+  internal::SwapchainContext d3d_;
   D3D12Context coreContext_;
   Renderer renderer_;
 

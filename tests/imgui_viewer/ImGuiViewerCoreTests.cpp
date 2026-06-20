@@ -6,15 +6,15 @@
 #include <string>
 #include <vector>
 
-#include "appcommon/image.h"
+#include "platform/Image.h"
 #include "metrics/ImageMetrics.h"
 #include "tools/CliOptions.h"
 
 namespace dxsplat {
 namespace {
 
-appcommon::ImageRgba8 MakeImage(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels) {
-  appcommon::ImageRgba8 image{};
+internal::ImageRgba8 MakeImage(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels) {
+  internal::ImageRgba8 image{};
   image.width = width;
   image.height = height;
   image.pixels = pixels;
@@ -54,11 +54,11 @@ TEST_CASE("CLI parser covers option and positional matrix") {
 }
 
 TEST_CASE("image metrics match deterministic reference values") {
-  const appcommon::ImageRgba8 a = MakeImage(2u, 1u, {
+  const internal::ImageRgba8 a = MakeImage(2u, 1u, {
       0u, 0u, 0u, 255u,
       255u, 255u, 255u, 255u,
   });
-  const appcommon::ImageRgba8 b = MakeImage(2u, 1u, {
+  const internal::ImageRgba8 b = MakeImage(2u, 1u, {
       0u, 0u, 0u, 255u,
       255u, 0u, 255u, 255u,
   });
@@ -75,7 +75,7 @@ TEST_CASE("image metrics match deterministic reference values") {
   CHECK(diff.psnr == doctest::Approx(10.0 * std::log10(6.0)));
   CHECK(diff.flipLike == doctest::Approx(1.0 / 6.0));
 
-  const appcommon::ImageRgba8 diffImage = BuildDiffImage(a, b);
+  const internal::ImageRgba8 diffImage = BuildDiffImage(a, b);
   REQUIRE(diffImage.width == 2u);
   REQUIRE(diffImage.height == 1u);
   REQUIRE(diffImage.pixels.size() == 8u);
@@ -88,7 +88,7 @@ TEST_CASE("image metrics match deterministic reference values") {
   CHECK(diffImage.pixels[6] == 0u);
   CHECK(diffImage.pixels[7] == 255u);
 
-  const appcommon::ImageRgba8 wrongSize = MakeImage(1u, 1u, {0u, 0u, 0u, 255u});
+  const internal::ImageRgba8 wrongSize = MakeImage(1u, 1u, {0u, 0u, 0u, 255u});
   const ImageComparison invalid = CompareImages(a, wrongSize);
   CHECK(std::isinf(invalid.mae));
   CHECK(std::isinf(invalid.mse));
@@ -96,7 +96,7 @@ TEST_CASE("image metrics match deterministic reference values") {
   CHECK(invalid.psnr == doctest::Approx(0.0));
   CHECK(BuildDiffImage(a, wrongSize).Empty());
 
-  const appcommon::ImageRgba8 shortPixels = MakeImage(2u, 1u, {0u, 0u, 0u, 255u});
+  const internal::ImageRgba8 shortPixels = MakeImage(2u, 1u, {0u, 0u, 0u, 255u});
   const ImageComparison shortInvalid = CompareImages(a, shortPixels);
   CHECK(std::isinf(shortInvalid.mae));
   CHECK(std::isinf(shortInvalid.mse));
@@ -104,7 +104,7 @@ TEST_CASE("image metrics match deterministic reference values") {
   CHECK(shortInvalid.psnr == doctest::Approx(0.0));
   CHECK(BuildDiffImage(a, shortPixels).Empty());
 
-  const appcommon::ImageRgba8 overflowHeader =
+  const internal::ImageRgba8 overflowHeader =
       MakeImage(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(), {255u});
   const ImageComparison overflowInvalid = CompareImages(overflowHeader, overflowHeader);
   CHECK(std::isinf(overflowInvalid.mae));

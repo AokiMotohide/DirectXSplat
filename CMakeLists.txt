@@ -35,11 +35,6 @@ directxsplat_bool_option(DXSPLAT_ENABLE_GPU_TESTS DIRECTXSPLAT_ENABLE_GPU_TESTS 
 directxsplat_bool_option(DXSPLAT_ENABLE_WARNINGS DIRECTXSPLAT_ENABLE_WARNINGS "Enable project compiler warnings" ON)
 directxsplat_bool_option(DXSPLAT_WARNINGS_AS_ERRORS DIRECTXSPLAT_WARNINGS_AS_ERRORS "Treat project compiler warnings as errors" OFF)
 
-set(DXSPLAT_BUILD_APPCOMMON OFF)
-if(DXSPLAT_BUILD_VIEWER OR DXSPLAT_BUILD_LEGACY_EXAMPLES OR DXSPLAT_BUILD_TESTS)
-  set(DXSPLAT_BUILD_APPCOMMON ON)
-endif()
-
 function(directxsplat_apply_project_warnings target_name)
   if(NOT DXSPLAT_ENABLE_WARNINGS)
     return()
@@ -114,10 +109,6 @@ if(DXSPLAT_BUILD_TESTS)
 endif()
 
 add_subdirectory(directxsplat)
-
-if(DXSPLAT_BUILD_APPCOMMON)
-  add_subdirectory(appcommon)
-endif()
 
 if(DXSPLAT_BUILD_VIEWER OR DXSPLAT_BUILD_LEGACY_EXAMPLES)
   add_subdirectory(examples)

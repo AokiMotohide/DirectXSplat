@@ -12,7 +12,7 @@ Modules include:
 
 - `directxsplat`, the core library for loading scenes, uploading splats, managing residency, sorting, and rendering a frame.
 - `shaders`, the HLSL compute/raster shader code used by the renderer.
-- `appcommon`, shared D3D12/Win32 helper code used by the examples and tests; not required for embedding the core library.
+- `directxsplat/src/platform`, internal D3D12/Win32 runtime code used by the viewer and tests.
 - `examples/imgui_viewer`, the interactive sample app for opening scenes and inspecting renderer stats.
 - `examples/minimal_viewer`, a smaller windowed integration example without the full viewer UI.
 - `examples/offscreen_capture`, a small example for rendering a scene to an image.

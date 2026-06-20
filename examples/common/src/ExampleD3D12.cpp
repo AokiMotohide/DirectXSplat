@@ -401,7 +401,7 @@ Status D3D12ExampleDevice::RecordReadback(const OffscreenTarget& target) {
   return Status::Ok();
 }
 
-Status D3D12ExampleDevice::ReadbackImage(const OffscreenTarget& target, appcommon::ImageRgba8& outImage) try {
+Status D3D12ExampleDevice::ReadbackImage(const OffscreenTarget& target, internal::ImageRgba8& outImage) try {
   outImage = {};
   StatusOr<ReadbackLayout> layout = ValidateReadbackLayout(target);
   if (!layout.ok()) {
@@ -411,7 +411,7 @@ Status D3D12ExampleDevice::ReadbackImage(const OffscreenTarget& target, appcommo
     return Status::Error("invalid readback target");
   }
 
-  appcommon::ImageRgba8 image{};
+  internal::ImageRgba8 image{};
   image.width = target.width;
   image.height = target.height;
   image.pixels.resize(static_cast<size_t>(layout.value.pixelBytes));

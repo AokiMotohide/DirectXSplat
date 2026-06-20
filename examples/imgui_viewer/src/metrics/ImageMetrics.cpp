@@ -17,7 +17,7 @@ ImageComparison InvalidComparison() {
   return out;
 }
 
-bool ImageByteCount(const appcommon::ImageRgba8& image, size_t& byteCount) {
+bool ImageByteCount(const internal::ImageRgba8& image, size_t& byteCount) {
   if (image.Empty()) {
     return false;
   }
@@ -36,7 +36,7 @@ bool ImageByteCount(const appcommon::ImageRgba8& image, size_t& byteCount) {
 
 }
 
-ImageComparison CompareImages(const appcommon::ImageRgba8& a, const appcommon::ImageRgba8& b) {
+ImageComparison CompareImages(const internal::ImageRgba8& a, const internal::ImageRgba8& b) {
   size_t byteCount = 0;
   size_t otherByteCount = 0;
   if (a.width != b.width || a.height != b.height || !ImageByteCount(a, byteCount) ||
@@ -70,8 +70,8 @@ ImageComparison CompareImages(const appcommon::ImageRgba8& a, const appcommon::I
   return out;
 }
 
-appcommon::ImageRgba8 BuildDiffImage(const appcommon::ImageRgba8& a, const appcommon::ImageRgba8& b) {
-  appcommon::ImageRgba8 out{};
+internal::ImageRgba8 BuildDiffImage(const internal::ImageRgba8& a, const internal::ImageRgba8& b) {
+  internal::ImageRgba8 out{};
   size_t byteCount = 0;
   size_t otherByteCount = 0;
   if (a.width != b.width || a.height != b.height || !ImageByteCount(a, byteCount) ||

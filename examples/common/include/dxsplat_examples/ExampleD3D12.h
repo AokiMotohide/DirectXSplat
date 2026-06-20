@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-#include "appcommon/image.h"
+#include "platform/Image.h"
 #include "dxsplat/context.h"
 #include "dxsplat/gpu_resources.h"
 #include "dxsplat/status.h"
@@ -43,7 +43,7 @@ class D3D12ExampleDevice {
 
   Status CreateOffscreenTarget(uint32_t width, uint32_t height, OffscreenTarget& outTarget);
   Status RecordReadback(const OffscreenTarget& target);
-  Status ReadbackImage(const OffscreenTarget& target, appcommon::ImageRgba8& outImage);
+  Status ReadbackImage(const OffscreenTarget& target, internal::ImageRgba8& outImage);
 
   ID3D12Device* Device() const { return device_.Get(); }
   ID3D12CommandQueue* Queue() const { return queue_.Get(); }

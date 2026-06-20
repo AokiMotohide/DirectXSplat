@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 
-#include "appcommon/swapchain_context.h"
+#include "platform/SwapchainContext.h"
 #include "dxsplat/context.h"
 #include "dxsplat/renderer.h"
 #include "dxsplat_examples/ExampleArgs.h"
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  appcommon::SwapchainContext swapchain;
+  internal::SwapchainContext swapchain;
   Status status = swapchain.Initialize(window.Hwnd(), parsed.value.width, parsed.value.height, false);
   if (!status.ok) {
     std::cerr << status.message << "\n";
