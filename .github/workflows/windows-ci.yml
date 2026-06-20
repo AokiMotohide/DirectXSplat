@@ -43,11 +43,12 @@ jobs:
           cmake -S . -B "build/core-${{ matrix.config }}"
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_SAMPLE=ON
+          -DDXSPLAT_BUILD_VIEWER=ON
+          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_GPU_TESTS=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
 
-      - name: Build library, sample, and tests
+      - name: Build library, viewer, and tests
         run: >
           cmake --build "build/core-${{ matrix.config }}"
           --config ${{ matrix.config }}
@@ -93,7 +94,8 @@ jobs:
           cmake -S . -B build/library-only
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_SAMPLE=OFF
+          -DDXSPLAT_BUILD_VIEWER=OFF
+          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_GPU_TESTS=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
 
@@ -102,6 +104,48 @@ jobs:
 
       - name: Run library-only tests
         run: ctest --test-dir build/library-only -C Release --output-on-failure --no-tests=error
+
+  product-viewer:
+    name: Product viewer target
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure product viewer build
+        run: >
+          cmake -S . -B build/viewer
+          -G "Visual Studio 17 2022" -A x64
+          -DDXSPLAT_BUILD_VIEWER=ON
+          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
+          -DDXSPLAT_BUILD_TESTS=ON
+          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDXSPLAT_ENABLE_WARNINGS=ON
+
+      - name: Build product viewer target
+        run: cmake --build build/viewer --config Release --target directxsplat_viewer
+
+      - name: Verify product viewer artifacts
+        run: |
+          $bin = "build/viewer/bin/Release"
+          $required = Join-Path $bin "DirectXSplatViewer.exe"
+          if (-not (Test-Path $required -PathType Leaf)) {
+            throw "Expected product viewer was not built: $required"
+          }
+          $forbidden = @(
+            "DirectXSplatMinimalViewer.exe",
+            "DirectXSplatOffscreenCapture.exe"
+          )
+          $present = $forbidden | Where-Object { Test-Path (Join-Path $bin $_) -PathType Leaf }
+          if ($present.Count -ne 0) {
+            throw "Legacy example executables should not be present: $($present -join ', ')"
+          }
+
+      - name: Build product viewer tests
+        run: cmake --build build/viewer --config Release --parallel
+
+      - name: Run product viewer tests
+        run: ctest --test-dir build/viewer -C Release --output-on-failure --no-tests=error
 
   optional-warp-renderer:
     name: Optional D3D12/WARP renderer tests
@@ -116,7 +160,8 @@ jobs:
           cmake -S . -B build/warp-renderer
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_SAMPLE=OFF
+          -DDXSPLAT_BUILD_VIEWER=OFF
+          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_GPU_TESTS=ON
           -DDXSPLAT_ENABLE_WARNINGS=ON
 

@@ -31,7 +31,8 @@ jobs:
           cmake -S . -B build/warnings
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_SAMPLE=ON
+          -DDXSPLAT_BUILD_VIEWER=ON
+          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_GPU_TESTS=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
           -DDXSPLAT_WARNINGS_AS_ERRORS=ON
@@ -118,7 +119,8 @@ jobs:
           cmake -S . -B build/install-smoke
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_TESTS=OFF
-          -DDXSPLAT_BUILD_SAMPLE=OFF
+          -DDXSPLAT_BUILD_VIEWER=OFF
+          -DDXSPLAT_BUILD_LEGACY_EXAMPLES=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build library for install smoke
