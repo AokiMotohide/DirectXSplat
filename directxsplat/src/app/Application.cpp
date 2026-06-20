@@ -14,6 +14,7 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "dxsplat/bounding.h"
+#include "tools/ScenePathValidation.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -46,6 +47,15 @@ Status Application::Initialize(const ViewerConfig& config) {
       pendingResizeHeight_ = h;
       resizePending_ = true;
     }
+  });
+  window_.SetDropCallback([this](const std::filesystem::path& path) {
+    const auto validated = internal::ValidateDroppedScenePath(path);
+    if (!validated.ok()) {
+      statusMessage_ = validated.status.message;
+      return;
+    }
+    const Status status = Load(validated.value);
+    statusMessage_ = status.ok ? "" : status.message;
   });
 
   camera_.SetViewport(window_.Width(), window_.Height());
@@ -114,8 +124,6 @@ Status Application::Initialize(const ViewerConfig& config) {
     if (!status.ok) {
       statusMessage_ = status.message;
     }
-  } else {
-    OpenSceneDialogAndLoad();
   }
 
   if (!config_.sceneFolderPath.empty()) {

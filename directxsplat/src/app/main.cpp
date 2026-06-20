@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "app/Application.h"
+#include "dxsplat/directxsplat.h"
 #include "tools/CliOptions.h"
 
 namespace {
@@ -30,9 +30,7 @@ std::vector<std::string> GetUtf8Args() {
 }  
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
-  using namespace dxsplat;
-
-  const auto parse = ParseCliOptions(GetUtf8Args());
+  const auto parse = dxsplat::internal::ParseCliOptions(GetUtf8Args());
   if (!parse.ok()) {
     MessageBoxA(nullptr, parse.status.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
     return 1;
@@ -40,31 +38,27 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
   if (parse.value.showHelp) {
     MessageBoxA(nullptr,
-                "DirectXSplatImGuiViewer [scene_path]\n"
+                "Usage: DirectXSplatViewer [scene_path]\n"
+                "\n"
+                "Options:\n"
                 "  --scene-folder <folder>\n"
-                "  --render-size <W>x<H>\n"
-                "  --images-path <dir>",
+                "  --render-size <width>x<height>\n"
+                "  --images-path <directory>\n"
+                "  --help, -h",
                 "DirectXSplat", MB_OK);
     return 0;
   }
 
-  ViewerConfig config{};
+  dxsplat::ViewerConfig config{};
   config.initialScenePath = parse.value.scenePath.value_or("");
   config.sceneFolderPath = parse.value.folderTraversalPath.value_or("");
   config.sourceImageDirectory = parse.value.imagePathOverride.value_or("");
   config.width = parse.value.renderWidthOverride.value_or(1600);
   config.height = parse.value.renderHeightOverride.value_or(900);
 
-  Application app;
-  const Status init = app.Initialize(config);
-  if (!init.ok) {
-    MessageBoxA(nullptr, init.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
-    return 1;
-  }
-
-  const Status run = app.Run();
-  if (!run.ok) {
-    MessageBoxA(nullptr, run.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
+  const dxsplat::Status result = dxsplat::Show(config);
+  if (!result.ok) {
+    MessageBoxA(nullptr, result.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
     return 1;
   }
   return 0;

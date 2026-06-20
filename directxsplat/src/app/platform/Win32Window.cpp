@@ -1,6 +1,7 @@
 #include "platform/Win32Window.h"
 
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <windowsx.h>
 
 #include <backends/imgui_impl_win32.h>
@@ -12,6 +13,9 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 namespace dxsplat {
+
+namespace fs = std::filesystem;
+constexpr UINT kDragQueryFileCount = 0xFFFFFFFFu;
 
 Win32Window::Win32Window() = default;
 
@@ -52,11 +56,13 @@ bool Win32Window::Create(const std::wstring& title, uint32_t width, uint32_t hei
 
   BOOL useDark = TRUE;
   DwmSetWindowAttribute(hwnd_, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
+  DragAcceptFiles(hwnd_, TRUE);
   return true;
 }
 
 void Win32Window::Destroy() {
   if (hwnd_ != nullptr) {
+    DragAcceptFiles(hwnd_, FALSE);
     DestroyWindow(hwnd_);
     hwnd_ = nullptr;
   }
@@ -125,6 +131,8 @@ void Win32Window::BeginFrameInput() { input_.BeginFrame(); }
 
 void Win32Window::SetResizeCallback(ResizeCallback callback) { onResize_ = std::move(callback); }
 
+void Win32Window::SetDropCallback(DropCallback callback) { onDrop_ = std::move(callback); }
+
 LRESULT CALLBACK Win32Window::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   Win32Window* window = nullptr;
   if (msg == WM_NCCREATE) {
@@ -158,6 +166,18 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
       if (!minimized_ && onResize_) {
         onResize_(width_, height_);
       }
+      return 0;
+    }
+    case WM_DROPFILES: {
+      HDROP drop = reinterpret_cast<HDROP>(wParam);
+      if (onDrop_ && DragQueryFileW(drop, kDragQueryFileCount, nullptr, 0) > 0) {
+        const UINT length = DragQueryFileW(drop, 0, nullptr, 0);
+        std::wstring path(length + 1u, L'\0');
+        DragQueryFileW(drop, 0, path.data(), length + 1u);
+        path.resize(length);
+        onDrop_(fs::path(path));
+      }
+      DragFinish(drop);
       return 0;
     }
     case WM_MOUSEMOVE: {

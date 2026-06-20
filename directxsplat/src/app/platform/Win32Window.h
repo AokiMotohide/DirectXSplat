@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <filesystem>
 #include <functional>
 #include <string>
 
@@ -12,6 +13,7 @@ namespace dxsplat {
 class Win32Window {
  public:
   using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
+  using DropCallback = std::function<void(const std::filesystem::path&)>;
 
   Win32Window();
   ~Win32Window();
@@ -35,6 +37,7 @@ class Win32Window {
 
   void BeginFrameInput();
   void SetResizeCallback(ResizeCallback callback);
+  void SetDropCallback(DropCallback callback);
 
  private:
   static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -51,6 +54,7 @@ class Win32Window {
   DWORD lastCreateError_ = 0;
   InputState input_{};
   ResizeCallback onResize_;
+  DropCallback onDrop_;
 };
 
 }  // namespace dxsplat

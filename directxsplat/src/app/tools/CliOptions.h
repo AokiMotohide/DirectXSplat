@@ -6,7 +6,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace dxsplat::internal {
 
 struct CliOptions {
   std::optional<std::string> scenePath;
@@ -19,4 +19,4 @@ struct CliOptions {
 
 StatusOr<CliOptions> ParseCliOptions(const std::vector<std::string>& args);
 
-}  // namespace dxsplat
+}  // namespace dxsplat::internal

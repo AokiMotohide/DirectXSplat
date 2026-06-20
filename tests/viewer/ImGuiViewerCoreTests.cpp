@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "platform/Image.h"
 #include "metrics/ImageMetrics.h"
 #include "tools/CliOptions.h"
+#include "tools/ScenePathValidation.h"
 
 namespace dxsplat {
 namespace {
@@ -24,13 +26,13 @@ internal::ImageRgba8 MakeImage(uint32_t width, uint32_t height, const std::vecto
 }
 
 TEST_CASE("CLI parser covers option and positional matrix") {
-  auto parsed = ParseCliOptions({"--help"});
+  auto parsed = internal::ParseCliOptions({"--help"});
   REQUIRE(parsed.ok());
   CHECK(parsed.value.showHelp);
   CHECK_FALSE(parsed.value.scenePath.has_value());
 
-  parsed = ParseCliOptions({"--images-path", "images", "--scene-folder", "scenes", "--render-size", "320x240",
-                            "botanical", "garden.ply"});
+  parsed = internal::ParseCliOptions({"--images-path", "images", "--scene-folder", "scenes", "--render-size", "320x240",
+                                      "botanical", "garden.ply"});
   REQUIRE(parsed.ok());
   REQUIRE(parsed.value.imagePathOverride.has_value());
   REQUIRE(parsed.value.folderTraversalPath.has_value());
@@ -43,14 +45,39 @@ TEST_CASE("CLI parser covers option and positional matrix") {
   CHECK(*parsed.value.renderHeightOverride == 240u);
   CHECK(*parsed.value.scenePath == "botanical garden.ply");
 
-  parsed = ParseCliOptions({"--render-size", "320"});
+  parsed = internal::ParseCliOptions({"--render-size", "320"});
   CHECK_FALSE(parsed.ok());
-  parsed = ParseCliOptions({"--render-size", "0x240"});
+  parsed = internal::ParseCliOptions({"--render-size", "0x240"});
   CHECK_FALSE(parsed.ok());
-  parsed = ParseCliOptions({"--force-aspect", "1.777"});
+  parsed = internal::ParseCliOptions({"--force-aspect", "1.777"});
   CHECK_FALSE(parsed.ok());
-  parsed = ParseCliOptions({"--images-path"});
+  parsed = internal::ParseCliOptions({"--images-path"});
   CHECK_FALSE(parsed.ok());
+}
+
+TEST_CASE("dropped scene path validation covers supported formats") {
+  auto empty = internal::ValidateDroppedScenePath({});
+  CHECK_FALSE(empty.ok());
+  CHECK(empty.status.message == "dropped scene path is empty");
+
+  std::error_code ec;
+  const std::filesystem::path dir = std::filesystem::temp_directory_path() / "directxsplat_dropped_scene_directory";
+  std::filesystem::remove_all(dir, ec);
+  std::filesystem::create_directories(dir, ec);
+  REQUIRE_FALSE(ec);
+
+  auto directory = internal::ValidateDroppedScenePath(dir);
+  CHECK_FALSE(directory.ok());
+  CHECK(directory.status.message == "dropped path is not a supported scene file");
+
+  for (const std::filesystem::path path : {"scene.ply", "scene.spz", "scene.sog", "scene.splat", "lod-meta.json"}) {
+    auto valid = internal::ValidateDroppedScenePath(path);
+    CAPTURE(path.string());
+    REQUIRE(valid.ok());
+    CHECK(valid.value == path);
+  }
+
+  std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("image metrics match deterministic reference values") {
