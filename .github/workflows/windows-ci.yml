@@ -115,6 +115,7 @@ jobs:
           cmake -S . -B build/viewer
           -G "Visual Studio 17 2022" -A x64
           -DDXSPLAT_BUILD_VIEWER=ON
+          -DDXSPLAT_BUILD_EXAMPLES=ON
           -DDXSPLAT_BUILD_TESTS=ON
           -DDXSPLAT_ENABLE_GPU_TESTS=OFF
           -DDXSPLAT_ENABLE_WARNINGS=ON
@@ -122,12 +123,23 @@ jobs:
       - name: Build product viewer target
         run: cmake --build build/viewer --config Release --target directxsplat_viewer
 
+      - name: Build facade examples
+        run: >
+          cmake --build build/viewer
+          --config Release
+          --target DirectXSplatBasicViewerExample DirectXSplatConfiguredViewerExample
+
       - name: Verify product viewer artifacts
         run: |
           $bin = "build/viewer/bin/Release"
-          $required = Join-Path $bin "DirectXSplatViewer.exe"
-          if (-not (Test-Path $required -PathType Leaf)) {
-            throw "Expected product viewer was not built: $required"
+          $required = @(
+            "DirectXSplatViewer.exe",
+            "DirectXSplatBasicViewerExample.exe",
+            "DirectXSplatConfiguredViewerExample.exe"
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $bin $_) -PathType Leaf) }
+          if ($missing.Count -ne 0) {
+            throw "Expected product artifacts were not built: $($missing -join ', ')"
           }
           $forbidden = @(
             "DirectXSplatMinimalViewer.exe",

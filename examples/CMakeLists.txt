@@ -1,0 +1,21 @@
+add_executable(DirectXSplatBasicViewerExample
+  basic_viewer/main.cpp
+)
+target_link_libraries(DirectXSplatBasicViewerExample PRIVATE DirectXSplat::DirectXSplat)
+target_compile_features(DirectXSplatBasicViewerExample PRIVATE cxx_std_20)
+
+add_executable(DirectXSplatConfiguredViewerExample
+  configured_viewer/main.cpp
+)
+target_link_libraries(DirectXSplatConfiguredViewerExample PRIVATE DirectXSplat::DirectXSplat)
+target_compile_features(DirectXSplatConfiguredViewerExample PRIVATE cxx_std_20)
+
+if(COMMAND directxsplat_apply_project_warnings)
+  directxsplat_apply_project_warnings(DirectXSplatBasicViewerExample)
+  directxsplat_apply_project_warnings(DirectXSplatConfiguredViewerExample)
+endif()
+
+if(COMMAND directxsplat_stage_dxc_runtime)
+  directxsplat_stage_dxc_runtime(DirectXSplatBasicViewerExample)
+  directxsplat_stage_dxc_runtime(DirectXSplatConfiguredViewerExample)
+endif()
