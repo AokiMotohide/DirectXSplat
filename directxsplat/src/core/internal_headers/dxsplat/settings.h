@@ -2,19 +2,13 @@
 
 #include <cstdint>
 
+#include "dxsplat/directxsplat.h"
 #include "dxsplat/math.h"
 #include "dxsplat/scene.h"
 #include "dxsplat/sort.h"
 #include "dxsplat/types.h"
 
 namespace dxsplat {
-
-enum class ShadingDegree {
-  Dc = 0,
-  Degree1 = 1,
-  Degree2 = 2,
-  Degree3 = 3,
-};
 
 constexpr ShadingDegree SanitizeShadingDegree(ShadingDegree degree) {
   switch (degree) {
