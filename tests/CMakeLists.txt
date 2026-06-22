@@ -3,10 +3,11 @@ function(directxsplat_add_test_executable target_name labels)
   set_tests_properties(${target_name} PROPERTIES LABELS "${labels}")
 endfunction()
 
-add_subdirectory(directxsplat)
+add_subdirectory(core)
 add_subdirectory(platform)
-add_subdirectory(runtime)
 
 if(DXSPLAT_BUILD_VIEWER)
   add_subdirectory(viewer)
 endif()
+
+add_subdirectory(runtime)

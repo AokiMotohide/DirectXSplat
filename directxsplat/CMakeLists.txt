@@ -185,6 +185,48 @@ if(DXSPLAT_BUILD_VIEWER)
     if(COMMAND directxsplat_stage_dxc_runtime)
       directxsplat_stage_dxc_runtime(directxsplat_viewer)
     endif()
+
+    install(TARGETS directxsplat_viewer
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    install(FILES
+      ${DIRECTXSPLAT_ROOT_DIR}/LICENSE
+      DESTINATION .
+    )
+    install(FILES
+      ${DIRECTXSPLAT_ROOT_DIR}/README.md
+      DESTINATION .
+      RENAME README.txt
+    )
+
+    if(DIRECTXSPLAT_DXCOMPILER_DLL AND DIRECTXSPLAT_DXIL_DLL)
+      set(DIRECTXSPLAT_VIEWER_PACKAGE_NAME "DirectXSplatViewer-${PROJECT_VERSION}-win64")
+      set(DIRECTXSPLAT_VIEWER_PACKAGE_DIR "${CMAKE_BINARY_DIR}/${DIRECTXSPLAT_VIEWER_PACKAGE_NAME}")
+      set(DIRECTXSPLAT_VIEWER_PACKAGE_ZIP "${CMAKE_BINARY_DIR}/${DIRECTXSPLAT_VIEWER_PACKAGE_NAME}.zip")
+
+      add_custom_command(
+        OUTPUT "${DIRECTXSPLAT_VIEWER_PACKAGE_ZIP}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:directxsplat_viewer>" "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}/DirectXSplatViewer.exe"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DIRECTXSPLAT_DXCOMPILER_DLL}" "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}/dxcompiler.dll"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DIRECTXSPLAT_DXIL_DLL}" "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}/dxil.dll"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DIRECTXSPLAT_ROOT_DIR}/LICENSE" "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}/LICENSE"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DIRECTXSPLAT_ROOT_DIR}/README.md" "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}/README.txt"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${DIRECTXSPLAT_VIEWER_PACKAGE_ZIP}"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${DIRECTXSPLAT_VIEWER_PACKAGE_DIR}" ${CMAKE_COMMAND} -E tar cf "${DIRECTXSPLAT_VIEWER_PACKAGE_ZIP}" --format=zip -- DirectXSplatViewer.exe dxcompiler.dll dxil.dll LICENSE README.txt
+        DEPENDS
+          directxsplat_viewer
+          "${DIRECTXSPLAT_DXCOMPILER_DLL}"
+          "${DIRECTXSPLAT_DXIL_DLL}"
+          "${DIRECTXSPLAT_ROOT_DIR}/LICENSE"
+          "${DIRECTXSPLAT_ROOT_DIR}/README.md"
+        VERBATIM
+      )
+      add_custom_target(directxsplat_viewer_package DEPENDS "${DIRECTXSPLAT_VIEWER_PACKAGE_ZIP}")
+    else()
+      message(WARNING "directxsplat_viewer_package skipped: dxcompiler.dll or dxil.dll was not found")
+    endif()
   endif()
 endif()
 

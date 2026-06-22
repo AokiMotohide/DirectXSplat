@@ -131,7 +131,7 @@ class RenderHarness {
     if (FAILED(hr)) {
       return Status::Error("failed creating command list");
     }
-    commandList_->SetName(L"DirectXSplatTestsCommandList");
+    commandList_->SetName(L"DirectXSplatCoreTestsCommandList");
     commandList_->Close();
 
     hr = device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence_.GetAddressOf()));

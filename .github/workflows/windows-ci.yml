@@ -56,6 +56,21 @@ jobs:
       - name: List registered tests
         run: ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} -N
 
+      - name: Verify registered test matrix
+        run: |
+          $expected = @(
+            "DirectXSplatCoreTests",
+            "DirectXSplatPlatformTests",
+            "DirectXSplatViewerTests",
+            "DirectXSplatRuntimeTests",
+            "DirectXSplatRepositoryLayout"
+          )
+          $json = ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} --show-only=json-v1 | ConvertFrom-Json
+          $actual = @($json.tests | ForEach-Object { $_.name })
+          if (($actual -join "|") -ne ($expected -join "|")) {
+            throw "Unexpected CTest matrix: $($actual -join ', ')"
+          }
+
       - name: Run all core tests
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
@@ -68,7 +83,7 @@ jobs:
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
           -C ${{ matrix.config }}
-          -R "DirectXSplatTests|DirectXSplatPlatformTests"
+          -R "DirectXSplatCoreTests|DirectXSplatPlatformTests"
           --output-on-failure
           --no-tests=error
 
@@ -77,7 +92,7 @@ jobs:
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
           -C ${{ matrix.config }}
-          -R "DirectXSplatTests"
+          -R "DirectXSplatCoreTests"
           --output-on-failure
           --no-tests=error
 
@@ -180,6 +195,6 @@ jobs:
         run: >
           ctest --test-dir build/warp-renderer
           -C Release
-          -R "DirectXSplatTests"
+          -R "DirectXSplatCoreTests"
           --output-on-failure
           --no-tests=error

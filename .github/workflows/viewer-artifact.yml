@@ -1,0 +1,100 @@
+name: Viewer Artifact
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - v0.1.*
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: viewer-artifact-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  viewer-package:
+    name: Viewer package
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure viewer package
+        run: >
+          cmake -S . -B build/viewer-package
+          -G "Visual Studio 17 2022" -A x64
+          -DDXSPLAT_BUILD_VIEWER=ON
+          -DDXSPLAT_BUILD_TESTS=OFF
+          -DDXSPLAT_ENABLE_WARNINGS=ON
+
+      - name: Build viewer
+        run: cmake --build build/viewer-package --config Release --target directxsplat_viewer --parallel
+
+      - name: Install viewer package files
+        run: cmake --install build/viewer-package --config Release --prefix "$env:RUNNER_TEMP/directxsplat-viewer-install"
+
+      - name: Build viewer ZIP
+        run: cmake --build build/viewer-package --config Release --target directxsplat_viewer_package --parallel
+
+      - name: Verify viewer ZIP
+        run: |
+          $zip = "build/viewer-package/DirectXSplatViewer-0.1.0-win64.zip"
+          if (-not (Test-Path $zip -PathType Leaf)) {
+            throw "Viewer ZIP was not created: $zip"
+          }
+          $extract = Join-Path $env:RUNNER_TEMP "directxsplat-viewer-zip"
+          if (Test-Path $extract) {
+            Remove-Item -Recurse -Force $extract
+          }
+          New-Item -ItemType Directory -Force -Path $extract | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $extract
+          $required = @(
+            "DirectXSplatViewer.exe",
+            "dxcompiler.dll",
+            "dxil.dll",
+            "LICENSE",
+            "README.txt"
+          )
+          $files = Get-ChildItem -Path $extract -File | ForEach-Object { $_.Name }
+          $missing = $required | Where-Object { $_ -notin $files }
+          $extra = $files | Where-Object { $_ -notin $required }
+          if ($missing.Count -ne 0 -or $extra.Count -ne 0) {
+            throw "Unexpected viewer ZIP contents. Missing: $($missing -join ', ') Extra: $($extra -join ', ')"
+          }
+          $nested = Get-ChildItem -Path $extract -Directory
+          if ($nested.Count -ne 0) {
+            throw "Viewer ZIP must not contain directories: $($nested.Name -join ', ')"
+          }
+
+      - name: Upload viewer ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectXSplatViewer-0.1.0-win64
+          path: build/viewer-package/DirectXSplatViewer-0.1.0-win64.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub release asset
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.1.')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "build/viewer-package/DirectXSplatViewer-0.1.0-win64.zip"
+          $ErrorActionPreference = "Continue"
+          gh release view $tag *> $null
+          $viewExit = $LASTEXITCODE
+          $ErrorActionPreference = "Stop"
+          if ($viewExit -eq 0) {
+            gh release upload $tag $zip --clobber
+          } else {
+            gh release create $tag $zip --title "DirectXSplat $tag" --notes "DirectXSplat viewer package."
+          }
