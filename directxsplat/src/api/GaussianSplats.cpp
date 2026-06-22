@@ -90,6 +90,12 @@ GaussianSplats MakeGaussianSplats(Scene scene) {
   return GaussianSplatsAccess::Make(std::move(scene));
 }
 
+const Aabb& BoundsFromSplats(const GaussianSplats& splats) {
+  static const Aabb emptyBounds{};
+  const auto& impl = GaussianSplatsAccess::ImplOf(splats);
+  return impl ? impl->bounds : emptyBounds;
+}
+
 Scene& SceneFromSplats(GaussianSplats& splats) {
   return GaussianSplatsAccess::EnsureImpl(splats)->scene;
 }

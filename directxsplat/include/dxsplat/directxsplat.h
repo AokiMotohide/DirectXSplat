@@ -76,6 +76,12 @@ class GaussianSplats {
   std::shared_ptr<Impl> impl_;
 };
 
+StatusOr<GaussianSplats> LoadFromFile(const std::filesystem::path& scenePath);
+StatusOr<GaussianSplats> LoadFromPly(const std::filesystem::path& scenePath);
+StatusOr<GaussianSplats> LoadFromSpz(const std::filesystem::path& scenePath);
+StatusOr<CameraSet> LoadCameraSet(const std::filesystem::path& cameraJsonPath);
+CameraSet MakeOrbitCameraSet(const GaussianSplats& splats, uint32_t count, uint32_t width, uint32_t height);
+
 struct ViewerConfig {
   std::filesystem::path initialScenePath;
   std::filesystem::path sceneFolderPath;

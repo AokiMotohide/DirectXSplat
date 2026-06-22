@@ -1,4 +1,5 @@
 add_executable(DirectXSplatRuntimeTests
+  FacadeLoaderTests.cpp
   PublicFacadeTypesTests.cpp
   RuntimeFacadeTests.cpp
 )

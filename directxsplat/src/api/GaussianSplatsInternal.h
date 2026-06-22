@@ -27,6 +27,7 @@ class GaussianSplatsAccess {
 };
 
 GaussianSplats MakeGaussianSplats(Scene scene);
+const Aabb& BoundsFromSplats(const GaussianSplats& splats);
 Scene& SceneFromSplats(GaussianSplats& splats);
 const Scene& SceneFromSplats(const GaussianSplats& splats);
 

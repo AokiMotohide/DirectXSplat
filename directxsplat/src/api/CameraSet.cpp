@@ -1,17 +1,16 @@
 #include "api/CameraSetInternal.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <utility>
 
 namespace dxsplat {
 
 namespace {
 
-constexpr std::array<float, 9> kIdentityIntrinsic{
-    1.0f, 0.0f, 0.0f,
-    0.0f, 1.0f, 0.0f,
-    0.0f, 0.0f, 1.0f,
-};
+constexpr uint32_t kDefaultCameraWidth = 1600;
+constexpr uint32_t kDefaultCameraHeight = 900;
 
 Vec3 RotateVector(const Quat& q, const Vec3& v) {
   const Vec3 u{q.x, q.y, q.z};
@@ -34,7 +33,30 @@ std::array<float, 16> BuildOpenCvExtrinsic(const InputCamera& camera) {
   };
 }
 
+std::array<float, 9> BuildIntrinsic(uint32_t width, uint32_t height, float fovYRadians) {
+  const float safeFovY = std::clamp(fovYRadians, 0.001f, 3.13f);
+  const float fy = static_cast<float>(height) * 0.5f / std::tan(safeFovY * 0.5f);
+  const float fx = fy;
+  const float cx = static_cast<float>(width) * 0.5f;
+  const float cy = static_cast<float>(height) * 0.5f;
+  return {
+      fx, 0.0f, cx,
+      0.0f, fy, cy,
+      0.0f, 0.0f, 1.0f,
+  };
+}
+
 }  // namespace
+
+CameraParams CameraParamsFromInputCamera(const InputCamera& input, uint32_t width, uint32_t height) {
+  CameraParams camera{};
+  camera.name = input.name;
+  camera.width = width;
+  camera.height = height;
+  camera.extrinsic = BuildOpenCvExtrinsic(input);
+  camera.intrinsic = BuildIntrinsic(width, height, input.fovYRadians);
+  return camera;
+}
 
 StatusOr<CameraSet> ConvertInputCamerasToCameraSet(const Scene& scene) {
   CameraSet out{};
@@ -42,11 +64,7 @@ StatusOr<CameraSet> ConvertInputCamerasToCameraSet(const Scene& scene) {
 
   // Convert DirectXSplat cameras into public OpenCV matrices
   for (const auto& input : scene.inputCameras) {
-    CameraParams camera{};
-    camera.name = input.name;
-    camera.extrinsic = BuildOpenCvExtrinsic(input);
-    camera.intrinsic = kIdentityIntrinsic;
-    out.cameras.push_back(std::move(camera));
+    out.cameras.push_back(CameraParamsFromInputCamera(input, kDefaultCameraWidth, kDefaultCameraHeight));
   }
 
   return StatusOr<CameraSet>::Ok(std::move(out));
