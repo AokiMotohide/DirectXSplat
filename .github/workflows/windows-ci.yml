@@ -63,6 +63,8 @@ jobs:
             "DirectXSplatPlatformTests",
             "DirectXSplatViewerTests",
             "DirectXSplatRuntimeTests",
+            "DirectXSplatPublicFacadeHeaderCompile",
+            "DirectXSplatViewerFacadeHeaderCompile",
             "DirectXSplatRepositoryLayout"
           )
           $json = ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} --show-only=json-v1 | ConvertFrom-Json
