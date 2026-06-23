@@ -1,6 +1,7 @@
 add_executable(DirectXSplatViewerTests
   ImGuiViewerCoreTests.cpp
   ScreenshotWriterTests.cpp
+  StatisticsGraphTests.cpp
   UiLayerTests.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/metrics/ImageMetrics.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/tools/CliOptions.cpp

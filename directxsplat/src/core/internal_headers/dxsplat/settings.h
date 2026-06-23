@@ -1,6 +1,9 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "dxsplat/directxsplat.h"
 #include "dxsplat/math.h"
@@ -62,6 +65,32 @@ struct RenderSettings {
   float lodHysteresis = 0.15f;
 };
 
+enum class StatisticsGraph {
+  Fps,
+  Visible,
+  SplatAlphaHistogram,
+  ProjectionActiveThreads,
+};
+
+struct GraphSeries {
+  std::array<float, 256> values{};
+  size_t count = 0;
+  size_t head = 0;
+};
+
+struct HistogramData {
+  std::array<float, 64> bins{};
+  float minValue = 0.0f;
+  float maxValue = 1.0f;
+};
+
+struct ViewerGraphData {
+  GraphSeries fps;
+  GraphSeries visible;
+  HistogramData splatAlpha;
+  HistogramData projectionActiveThreads;
+};
+
 struct FrameStats {
   uint64_t gaussiansVisible = 0;
   uint64_t gaussiansTotal = 0;
@@ -81,6 +110,7 @@ struct FrameStats {
   float gpuDepthMs = 0.0f;
   float gpuMs = 0.0f;
   float cpuMs = 0.0f;
+  HistogramData projectionActiveThreads{};
 };
 
 struct RenderInput {
@@ -96,5 +126,14 @@ struct RenderInput {
   bool cameraCut = false;
   uint64_t frameIndex = 0;
 };
+
+void PushGraphSample(GraphSeries& series, float value);
+std::vector<float> OrderedGraphSamples(const GraphSeries& series);
+float VisiblePercentageSample(const FrameStats& stats);
+HistogramData BuildSplatAlphaHistogram(const Scene& scene, size_t binCount);
+HistogramData BuildProjectionActiveThreadsHistogram(const FrameStats& stats, size_t binCount);
+const char* StatisticsGraphTitle(StatisticsGraph graph);
+const char* StatisticsGraphColumnTitle(StatisticsGraph graph);
+const char* StatisticsGraphRowTitle(StatisticsGraph graph);
 
 }  // namespace dxsplat

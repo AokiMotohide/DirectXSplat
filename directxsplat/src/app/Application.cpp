@@ -353,6 +353,8 @@ Status Application::Run() {
       }
     }
 
+    UpdateGraphData(activeScene);
+
     UiFrameData uiFrame{};
     uiFrame.settings = &renderSettings_;
     uiFrame.selectedInputCamera = &selectedInputCamera_;
@@ -367,6 +369,7 @@ Status Application::Run() {
     uiFrame.camera = &camera_;
     uiFrame.scene = activeScene;
     uiFrame.stats = &frameStats_;
+    uiFrame.graphData = &graphData_;
     uiFrame.fps = smoothedFps_;
     uiFrame.frameMs = smoothedFrameMs_;
     uiFrame.renderWidth = input.viewportWidth;
@@ -499,6 +502,7 @@ Status Application::Load(const std::filesystem::path& scenePath) {
 Status Application::SetScene(Scene scene) {
   DestroyUploadedScenes();
   sceneManager_.Clear();
+  graphScene_ = nullptr;
   Status uploadStatus = UploadAndAddScene(std::move(scene));
   if (!uploadStatus.ok) {
     return uploadStatus;
@@ -735,6 +739,18 @@ void Application::UpdateSelectedInputCamera() {
   } else {
     selectedInputCamera_ = -1;
   }
+}
+
+void Application::UpdateGraphData(const Scene* activeScene) {
+  PushGraphSample(graphData_.fps, smoothedFps_);
+  PushGraphSample(graphData_.visible, VisiblePercentageSample(frameStats_));
+  if (activeScene != graphScene_) {
+    graphData_.splatAlpha = activeScene != nullptr ? BuildSplatAlphaHistogram(*activeScene, graphData_.splatAlpha.bins.size())
+                                                   : HistogramData{};
+    graphScene_ = activeScene;
+  }
+  graphData_.projectionActiveThreads =
+      BuildProjectionActiveThreadsHistogram(frameStats_, graphData_.projectionActiveThreads.bins.size());
 }
 
 void Application::HandleDoubleClickFocus() {

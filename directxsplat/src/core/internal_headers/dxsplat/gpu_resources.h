@@ -128,6 +128,7 @@ struct GpuFrameResources {
   GpuBufferView sortedSceneIndices{};
   GpuBufferView secondarySortedSceneIndices{};
   GpuBufferView visibleCounter{};
+  GpuBufferView projectionActiveThreads{};
   GpuBufferView drawArgs{};
   GpuBufferView sortMeta{};
   uint32_t visibleSplatCount = 0;

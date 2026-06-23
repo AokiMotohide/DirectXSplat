@@ -36,6 +36,7 @@ struct UiFrameData {
   CameraController* camera = nullptr;
   const Scene* scene = nullptr;
   FrameStats* stats = nullptr;
+  const ViewerGraphData* graphData = nullptr;
   float fps = 0.0f;
   float frameMs = 0.0f;
   uint32_t renderWidth = 0;

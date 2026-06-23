@@ -56,10 +56,14 @@ RWStructuredBuffer<uint> gOutSortKeys : register(u0);
 RWStructuredBuffer<uint> gOutSortValues : register(u1);
 RWByteAddressBuffer gVisibleCounter : register(u2);
 
+static const uint kProjectionThreadHistogramOffset = 8u;
+static const uint kProjectionThreadHistogramBins = 64u;
 static const uint kFormatFloat32 = 0u;
 static const uint kFormatFloat16 = 1u;
 static const uint kFormatUint8 = 2u;
 static const float kPackedShUint8Range = 4.0f;
+
+groupshared uint gPrepareActiveThreads;
 
 float DecodeHalf(uint bits) {
   return f16tof32(bits & 0xFFFFu);
@@ -298,134 +302,134 @@ uint EncodeDepthKey(float depth) {
 
 [numthreads(256, 1, 1)]
 void CSPrepare(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID) {
+  if (groupThreadId.x == 0u) {
+    gPrepareActiveThreads = 0u;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  bool active = false;
+  uint idx = 0u;
+  float viewDepth = 0.0f;
   uint chunkIndex = groupId.y;
-  if (chunkIndex >= gSetCount) {
-    return;
-  }
+  if (chunkIndex < gSetCount) {
+    ChunkPrepGpu chunkPrep = gChunkPrep[chunkIndex];
+    SetParamsGpu sp = chunkPrep.params;
+    uint localIndex = groupId.x * 256u + groupThreadId.x;
+    if (sp.visible != 0u && localIndex < chunkPrep.gaussianCount) {
+      idx = chunkPrep.gaussianOffset + localIndex;
+      if (idx < gSceneCount) {
+        float3 position;
+        float opacityRaw;
+        float3 baseScale;
+        float filterScale;
+        float4 rotation;
+        DecodeSceneGaussianBase(idx, sp, position, opacityRaw, baseScale, filterScale, rotation);
 
-  ChunkPrepGpu chunkPrep = gChunkPrep[chunkIndex];
-  SetParamsGpu sp = chunkPrep.params;
-  if (sp.visible == 0u) {
-    return;
-  }
+        float scaleMultiplier = max(sp.scalingModifier * gGlobalScale, 1e-4);
+        float3 scaled = max(baseScale * scaleMultiplier, 1e-4);
+        scaled = max(scaled, 1e-4);
+        float4 posView4 = mul(gView, float4(position, 1.0));
+        viewDepth = posView4.z * (gPositiveViewSpaceZ != 0u ? 1.0f : -1.0f);
+        bool valid = viewDepth > 1e-4f && isfinite(posView4.x) && isfinite(posView4.y) &&
+                     isfinite(posView4.z) && isfinite(posView4.w);
 
-  uint localIndex = groupId.x * 256u + groupThreadId.x;
-  if (localIndex >= chunkPrep.gaussianCount) {
-    return;
-  }
-  uint idx = chunkPrep.gaussianOffset + localIndex;
-  if (idx >= gSceneCount) {
-    return;
-  }
+        float4 clip = 0.0f;
+        if (valid) {
+          clip = mul(gProj, posView4);
+          valid = abs(clip.w) >= 1e-6 && isfinite(clip.x) && isfinite(clip.y) && isfinite(clip.z) && isfinite(clip.w);
+        }
 
-  float3 position;
-  float opacityRaw;
-  float3 baseScale;
-  float filterScale;
-  float4 rotation;
-  DecodeSceneGaussianBase(idx, sp, position, opacityRaw, baseScale, filterScale, rotation);
+        float3 ndc3 = 0.0f;
+        float2 ndc = 0.0f;
+        if (valid) {
+          ndc3 = clip.xyz / clip.w;
+          ndc = ndc3.xy;
+          if (gFastCulling != 0u) {
+            const float dilation = max(gFrustumDilation, 0.0f);
+            valid = !(ndc3.x < -1.0f - dilation || ndc3.x > 1.0f + dilation ||
+                      ndc3.y < -1.0f - dilation || ndc3.y > 1.0f + dilation ||
+                      ndc3.z < -dilation || ndc3.z > 1.0f);
+          }
+        }
 
-  float scaleMultiplier = max(sp.scalingModifier * gGlobalScale, 1e-4);
-  float3 scaled = max(baseScale * scaleMultiplier, 1e-4);
-  scaled = max(scaled, 1e-4);
-  float4 posView4 = mul(gView, float4(position, 1.0));
-  float viewDepth = posView4.z * (gPositiveViewSpaceZ != 0u ? 1.0f : -1.0f);
-  if (viewDepth <= 1e-4f || !isfinite(posView4.x) || !isfinite(posView4.y) || !isfinite(posView4.z) || !isfinite(posView4.w)) {
-    return;
-  }
+        float3 posView = posView4.xyz;
+        float3x3 cov = BuildViewCovariance(scaled, rotation);
 
-  float4 clip = mul(gProj, posView4);
-  if (abs(clip.w) < 1e-6 || !isfinite(clip.x) || !isfinite(clip.y) || !isfinite(clip.z) || !isfinite(clip.w)) {
-    return;
-  }
+        float a = 0.0f;
+        float b = 0.0f;
+        float c = 0.0f;
+        float baseDet = 0.0f;
+        float det = 0.0f;
+        float opacity = 0.0f;
+        if (valid) {
+          float z = max(abs(viewDepth), 1e-4);
+          float invZ = 1.0 / z;
+          float invZ2 = invZ * invZ;
+          float j00 = gFocalX * invZ;
+          float j02 = -gFocalX * posView.x * invZ2;
+          float j11 = gFocalY * invZ;
+          float j12 = -gFocalY * posView.y * invZ2;
 
-  float3 ndc3 = clip.xyz / clip.w;
-  float2 ndc = ndc3.xy;
-  if (gFastCulling != 0u) {
-    const float dilation = max(gFrustumDilation, 0.0f);
-    if (ndc3.x < -1.0f - dilation || ndc3.x > 1.0f + dilation ||
-        ndc3.y < -1.0f - dilation || ndc3.y > 1.0f + dilation ||
-        ndc3.z < -dilation || ndc3.z > 1.0f) {
-      return;
+          float c00 = cov[0][0];
+          float c01 = 0.5 * (cov[0][1] + cov[1][0]);
+          float c02 = 0.5 * (cov[0][2] + cov[2][0]);
+          float c11 = cov[1][1];
+          float c12 = 0.5 * (cov[1][2] + cov[2][1]);
+          float c22 = cov[2][2];
+
+          float covScreen00 = j00 * j00 * c00 + 2.0 * j00 * j02 * c02 + j02 * j02 * c22;
+          float covScreen01 = j00 * j11 * c01 + j00 * j12 * c02 + j02 * j11 * c12 + j02 * j12 * c22;
+          float covScreen11 = j11 * j11 * c11 + 2.0 * j11 * j12 * c12 + j12 * j12 * c22;
+          baseDet = covScreen00 * covScreen11 - covScreen01 * covScreen01;
+          valid = baseDet > 1e-10 && isfinite(baseDet);
+
+          float pixelVariance = (gAntialiasingMode != 0u) ? (0.3f * max(gAntialiasingStrength, 0.0f)) : 0.0f;
+          a = covScreen00 + pixelVariance;
+          b = covScreen01;
+          c = covScreen11 + pixelVariance;
+          det = a * c - b * b;
+          valid = valid && det > 1e-10 && isfinite(det);
+          opacity = saturate(opacityRaw);
+          if (gAntialiasingMode != 0u && det > 1e-10) {
+            opacity *= sqrt(saturate(baseDet / det));
+          }
+        }
+
+        static const float kAlphaCut = 1.0f / 255.0f;
+
+        float2 majorDir = 0.0f;
+        float2 axisPixels = 0.0f;
+        if (valid) {
+          valid = opacity >= kAlphaCut && ExtractEllipseAxes(max(a, 1e-6), b, max(c, 1e-6), majorDir, axisPixels);
+        }
+
+        if (valid) {
+          float support = sqrt(8.0f);
+          axisPixels = axisPixels * support;
+          axisPixels = min(axisPixels, float2(gMaxAxisPixels, gMaxAxisPixels));
+          axisPixels = max(axisPixels, 0.5f);
+          valid = !(axisPixels.x < 0.55f && axisPixels.y < 0.55f);
+        }
+
+        active = valid;
+      }
     }
   }
 
-  float3 posView = posView4.xyz;
-  float3x3 cov = BuildViewCovariance(scaled, rotation);
+  if (active) {
+    uint ignored;
+    InterlockedAdd(gPrepareActiveThreads, 1u, ignored);
+  }
+  GroupMemoryBarrierWithGroupSync();
+  if (groupThreadId.x == 0u) {
+    uint bin = min(gPrepareActiveThreads / 4u, kProjectionThreadHistogramBins - 1u);
+    uint ignored;
+    gVisibleCounter.InterlockedAdd(kProjectionThreadHistogramOffset + bin * 4u, 1u, ignored);
+  }
 
-  float z = max(abs(viewDepth), 1e-4);
-  float invZ = 1.0 / z;
-  float invZ2 = invZ * invZ;
-  float j00 = gFocalX * invZ;
-  float j02 = -gFocalX * posView.x * invZ2;
-  float j11 = gFocalY * invZ;
-  float j12 = -gFocalY * posView.y * invZ2;
-
-  float c00 = cov[0][0];
-  float c01 = 0.5 * (cov[0][1] + cov[1][0]);
-  float c02 = 0.5 * (cov[0][2] + cov[2][0]);
-  float c11 = cov[1][1];
-  float c12 = 0.5 * (cov[1][2] + cov[2][1]);
-  float c22 = cov[2][2];
-  float support = sqrt(8.0f);
-
-  float covScreen00 = j00 * j00 * c00 + 2.0 * j00 * j02 * c02 + j02 * j02 * c22;
-  float covScreen01 = j00 * j11 * c01 + j00 * j12 * c02 + j02 * j11 * c12 + j02 * j12 * c22;
-  float covScreen11 = j11 * j11 * c11 + 2.0 * j11 * j12 * c12 + j12 * j12 * c22;
-  float baseDet = covScreen00 * covScreen11 - covScreen01 * covScreen01;
-  if (!(baseDet > 1e-10) || !isfinite(baseDet)) {
+  if (!active) {
     return;
   }
-  float pixelVariance = (gAntialiasingMode != 0u) ? (0.3f * max(gAntialiasingStrength, 0.0f)) : 0.0f;
-  float a = covScreen00 + pixelVariance;
-  float b = covScreen01;
-  float c = covScreen11 + pixelVariance;
-  float det = a * c - b * b;
-  if (!(det > 1e-10) || !isfinite(det)) {
-    return;
-  }
-  float invDet = 1.0 / det;
-  float3 conic = float3(c * invDet, -b * invDet, a * invDet);
-
-  static const float kAlphaCut = 1.0f / 255.0f;
-
-  float opacity = saturate(opacityRaw);
-  if (gAntialiasingMode != 0u) {
-    opacity *= sqrt(saturate(baseDet / det));
-  }
-  if (opacity < kAlphaCut) {
-    return;
-  }
-
-  float2 majorDir;
-  float2 axisPixels;
-  if (!ExtractEllipseAxes(max(a, 1e-6), b, max(c, 1e-6), majorDir, axisPixels)) {
-    return;
-  }
-  float2 orth = float2(-majorDir.y, majorDir.x);
-
-  axisPixels = axisPixels * support;
-  axisPixels = min(axisPixels, float2(gMaxAxisPixels, gMaxAxisPixels));
-  axisPixels = max(axisPixels, 0.5f);
-
-  float alphaCutPower = log(kAlphaCut / max(opacity, 1e-6f));
-  const float support2 = support * support;
-  alphaCutPower = max(alphaCutPower, -0.5f * support2);
-
-  const float2 u = majorDir;
-  const float2 v = orth;
-  const float invMajorVar = support2 / max(axisPixels.x * axisPixels.x, 1e-8f);
-  const float invMinorVar = support2 / max(axisPixels.y * axisPixels.y, 1e-8f);
-  conic = float3(
-      invMajorVar * u.x * u.x + invMinorVar * v.x * v.x,
-      invMajorVar * u.x * u.y + invMinorVar * v.x * v.y,
-      invMajorVar * u.y * u.y + invMinorVar * v.y * v.y);
-
-  if (axisPixels.x < 0.55f && axisPixels.y < 0.55f) {
-    return;
-  }
-
-  float2 centerPixel = float2((ndc.x + 1.0) / gNdcX, (1.0 - ndc.y) / gNdcY);
 
   uint pairIndex;
   gVisibleCounter.InterlockedAdd(0, 1, pairIndex);
@@ -545,6 +549,10 @@ RWByteAddressBuffer gFinalizeSortMeta : register(u2);
 void CSReset(uint3 tid : SV_DispatchThreadID) {
   gFinalizeVisibleCounter.Store(0, 0);
   gFinalizeVisibleCounter.Store(4, 0);
+  [unroll]
+  for (uint i = 0u; i < kProjectionThreadHistogramBins; ++i) {
+    gFinalizeVisibleCounter.Store(kProjectionThreadHistogramOffset + i * 4u, 0);
+  }
   gDrawArgs.Store(0, 0);
   gDrawArgs.Store(4, 0);
   gDrawArgs.Store(8, 0);

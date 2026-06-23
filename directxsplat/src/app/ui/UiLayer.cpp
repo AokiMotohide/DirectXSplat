@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <imgui.h>
 #include <string>
+#include <vector>
 
 namespace dxsplat {
 
@@ -203,34 +204,71 @@ void RenderStats(const UiFrameData& frame) {
   }
 }
 
-void RenderLineGraph(const char* title, const char* columnTitle, const char* rowTitle, float value, float scaleMax) {
+float MaxGraphValue(const std::vector<float>& values, float fallback) {
+  float maxValue = fallback;
+  for (float value : values) {
+    maxValue = std::max(maxValue, value);
+  }
+  return std::max(maxValue, 1.0f);
+}
+
+float MaxHistogramValue(const HistogramData& histogram) {
+  float maxValue = 1.0f;
+  for (float value : histogram.bins) {
+    maxValue = std::max(maxValue, value);
+  }
+  return maxValue;
+}
+
+void RenderLineGraph(StatisticsGraph graph, const GraphSeries& series, float scaleFallback) {
+  const char* title = StatisticsGraphTitle(graph);
+  const char* columnTitle = StatisticsGraphColumnTitle(graph);
+  const char* rowTitle = StatisticsGraphRowTitle(graph);
   ImGui::TextUnformatted(title);
   ImGui::TextUnformatted(rowTitle);
-  const float values[2] = {value, value};
+  std::vector<float> values = OrderedGraphSamples(series);
+  if (values.empty()) {
+    values.push_back(0.0f);
+  }
   const std::string id = std::string("##") + title;
-  ImGui::PlotLines(id.c_str(), values, 2, 0, nullptr, 0.0f, std::max(scaleMax, 1.0f), ImVec2(250.0f, 42.0f));
+  ImGui::PlotLines(id.c_str(),
+                   values.data(),
+                   static_cast<int>(values.size()),
+                   0,
+                   nullptr,
+                   0.0f,
+                   MaxGraphValue(values, scaleFallback),
+                   ImVec2(250.0f, 42.0f));
   ImGui::TextUnformatted(columnTitle);
 }
 
-void RenderHistogramGraph(const char* title, const char* columnTitle, const char* rowTitle) {
+void RenderHistogramGraph(StatisticsGraph graph, const HistogramData& histogram) {
+  const char* title = StatisticsGraphTitle(graph);
+  const char* columnTitle = StatisticsGraphColumnTitle(graph);
+  const char* rowTitle = StatisticsGraphRowTitle(graph);
   ImGui::TextUnformatted(title);
   ImGui::TextUnformatted(rowTitle);
-  std::array<float, 64> values{};
   const std::string id = std::string("##") + title;
-  ImGui::PlotHistogram(id.c_str(), values.data(), static_cast<int>(values.size()), 0, nullptr, 0.0f, 1.0f, ImVec2(250.0f, 42.0f));
+  ImGui::PlotHistogram(id.c_str(),
+                       histogram.bins.data(),
+                       static_cast<int>(histogram.bins.size()),
+                       0,
+                       nullptr,
+                       0.0f,
+                       MaxHistogramValue(histogram),
+                       ImVec2(250.0f, 42.0f));
   ImGui::TextUnformatted(columnTitle);
 }
 
 void RenderStatisticsGraphs(const UiFrameData& frame) {
-  const uint64_t total = TotalSplats(frame);
-  const uint64_t visible = VisibleSplats(frame);
-  const float visiblePct = total > 0 ? static_cast<float>(visible) * 100.0f / static_cast<float>(total) : 0.0f;
+  ViewerGraphData emptyGraphs{};
+  const ViewerGraphData& graphs = frame.graphData != nullptr ? *frame.graphData : emptyGraphs;
 
   CompactSeparator();
-  RenderLineGraph("FPS", "FPS", "FPS", frame.fps, std::max(frame.fps, 120.0f));
-  RenderLineGraph("Visible", "Visible", "Visible", visiblePct, 100.0f);
-  RenderHistogramGraph("Splat Alpha Histogram", "Alpha", "Count");
-  RenderHistogramGraph("Projection Active Threads", "Threads", "Count");
+  RenderLineGraph(StatisticsGraph::Fps, graphs.fps, 120.0f);
+  RenderLineGraph(StatisticsGraph::Visible, graphs.visible, 100.0f);
+  RenderHistogramGraph(StatisticsGraph::SplatAlphaHistogram, graphs.splatAlpha);
+  RenderHistogramGraph(StatisticsGraph::ProjectionActiveThreads, graphs.projectionActiveThreads);
 }
 
 void RenderGraphicSection(UiFrameData& frame) {

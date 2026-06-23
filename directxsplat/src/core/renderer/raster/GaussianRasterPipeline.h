@@ -161,6 +161,7 @@ class GaussianRasterPipeline {
     Microsoft::WRL::ComPtr<ID3D12Resource> oneSweepIndexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> oneSweepDispatchArgsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> sortMetaReadback;
+    Microsoft::WRL::ComPtr<ID3D12Resource> projectionActiveThreadsReadback;
     Microsoft::WRL::ComPtr<ID3D12Resource> drawArgsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> prepConstantsUpload;
     Microsoft::WRL::ComPtr<ID3D12Resource> rasterConstantsUpload;
@@ -181,6 +182,7 @@ class GaussianRasterPipeline {
     uint32_t lastVisibleCount = 0;
     uint32_t lastVisibleBlocks = 0;
     uint32_t lastSortPassCount = 0;
+    std::array<uint32_t, 64> lastProjectionActiveThreadBins{};
     uint32_t sortStatsFrame = 0;
     uint32_t sortMetaCopyFrame = 0;
     Microsoft::WRL::ComPtr<ID3D12Fence> sortMetaCopyFence;

@@ -37,7 +37,11 @@ constexpr uint32_t kSortIndirectCommandCount = kOneSweepDigitCommandIndex + kOne
 constexpr uint32_t kSortStatsReadbackPeriod = 30;
 constexpr float kPackedMipFilterFraction = 0.18f;
 constexpr uint32_t kMaxSceneIndexToChunkEntries = 64u * 1024u * 1024u;
-constexpr size_t kRenderScratchRetiredResourceSlots = 15;
+constexpr uint32_t kProjectionActiveThreadBins = 64u;
+constexpr uint32_t kProjectionActiveThreadHistogramOffset = 8u;
+constexpr uint32_t kProjectionActiveThreadHistogramBytes = kProjectionActiveThreadBins * sizeof(uint32_t);
+constexpr uint32_t kVisibleCounterBytes = kProjectionActiveThreadHistogramOffset + kProjectionActiveThreadHistogramBytes;
+constexpr size_t kRenderScratchRetiredResourceSlots = 16;
 constexpr DWORD kFenceWaitPollMs = 50;
 
 constexpr size_t AlignUp(size_t value, size_t alignment) {
@@ -1058,6 +1062,8 @@ Status GaussianRasterPipeline::ReleaseRenderScratchResources(RenderScratch& scra
   if (!s.ok) return s;
   s = RetireResource(scratch.sortMetaReadback);
   if (!s.ok) return s;
+  s = RetireResource(scratch.projectionActiveThreadsReadback);
+  if (!s.ok) return s;
   s = RetireResource(scratch.drawArgsBuffer);
   if (!s.ok) return s;
   s = ReleaseUploadResource(scratch.prepConstantsUpload, scratch.prepConstantsMapped, scratch.prepConstantsCapacityBytes);
@@ -1080,6 +1086,7 @@ Status GaussianRasterPipeline::ReleaseRenderScratchResources(RenderScratch& scra
   scratch.lastVisibleCount = 0;
   scratch.lastVisibleBlocks = 0;
   scratch.lastSortPassCount = 0;
+  scratch.lastProjectionActiveThreadBins = {};
   scratch.sortStatsFrame = 0;
   scratch.sortMetaCopyFrame = 0;
   scratch.sortMetaCopyFence.Reset();
@@ -2142,6 +2149,12 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
       return s;
     }
   }
+  if (scratch.projectionActiveThreadsReadback == nullptr) {
+    Status s = CreateReadbackBuffer(kProjectionActiveThreadHistogramBytes, scratch.projectionActiveThreadsReadback);
+    if (!s.ok) {
+      return s;
+    }
+  }
   if (gpuTimingEnabled_ && scratch.timestampQueryHeap == nullptr) {
     D3D12_QUERY_HEAP_DESC desc{};
     desc.Count = kTimestampQueryCount;
@@ -2230,7 +2243,7 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
   s = CreateDefaultBuffer(valueBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortValuesTempBuffer);
   if (!s.ok) return s;
-  s = CreateDefaultBuffer(16u, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+  s = CreateDefaultBuffer(kVisibleCounterBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS, visibleCounterBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(sizeof(SortMetaGpu), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -2516,12 +2529,21 @@ void GaussianRasterPipeline::PopulateFrameResources(const RenderTargetBinding& t
                                                    false);
   out.visibleCounter = MakeBufferView(scratch.visibleCounterBuffer.Get(),
                                       scratch.visibleCounterState,
-                                      16u,
+                                      kVisibleCounterBytes,
                                       4u,
                                       GpuViewLifetime::CurrentRenderCall,
                                       GpuResourceAccess::ReadWrite,
                                       false,
                                       false);
+  out.projectionActiveThreads = MakeBufferView(scratch.visibleCounterBuffer.Get(),
+                                               scratch.visibleCounterState,
+                                               kProjectionActiveThreadHistogramOffset,
+                                               kProjectionActiveThreadHistogramBytes,
+                                               sizeof(uint32_t),
+                                               GpuViewLifetime::CurrentRenderCall,
+                                               GpuResourceAccess::ReadWrite,
+                                               false,
+                                               false);
   out.drawArgs = MakeBufferView(scratch.drawArgsBuffer.Get(),
                                 scratch.drawArgsState,
                                 16u,
@@ -3322,6 +3344,14 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
       scratch->lastSortPassCount = meta->sortPassCount;
       scratch->sortMetaReadback->Unmap(0, nullptr);
     }
+    mapped = nullptr;
+    if (scratch->projectionActiveThreadsReadback != nullptr &&
+        SUCCEEDED(scratch->projectionActiveThreadsReadback->Map(0, nullptr, &mapped)) && mapped != nullptr) {
+      const uint32_t* bins = reinterpret_cast<const uint32_t*>(mapped);
+      std::copy_n(bins, scratch->lastProjectionActiveThreadBins.size(),
+                  scratch->lastProjectionActiveThreadBins.begin());
+      scratch->projectionActiveThreadsReadback->Unmap(0, nullptr);
+    }
     scratch->sortMetaCopyFence.Reset();
     scratch->sortMetaCopyFenceValue = 0;
     scratch->sortMetaCopyPending = false;
@@ -3695,11 +3725,19 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     sortMetaValid = true;
   }
 
-  if (sortMetaValid && scratch->sortMetaReadback != nullptr && !scratch->sortMetaCopyPending &&
+  if (sortMetaValid && scratch->sortMetaReadback != nullptr && scratch->projectionActiveThreadsReadback != nullptr &&
+      !scratch->sortMetaCopyPending &&
       scratch->sortStatsFrame % kSortStatsReadbackPeriod == 0) {
     Transition(commandList, scratch->sortMetaBuffer.Get(), scratch->sortMetaState, D3D12_RESOURCE_STATE_COPY_SOURCE);
     scratch->sortMetaState = D3D12_RESOURCE_STATE_COPY_SOURCE;
     commandList->CopyBufferRegion(scratch->sortMetaReadback.Get(), 0, scratch->sortMetaBuffer.Get(), 0, sizeof(SortMetaGpu));
+    Transition(commandList, scratch->visibleCounterBuffer.Get(), scratch->visibleCounterState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    scratch->visibleCounterState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    commandList->CopyBufferRegion(scratch->projectionActiveThreadsReadback.Get(),
+                                  0,
+                                  scratch->visibleCounterBuffer.Get(),
+                                  kProjectionActiveThreadHistogramOffset,
+                                  kProjectionActiveThreadHistogramBytes);
     scratch->sortMetaCopyFrame = scratch->sortStatsFrame;
     scratch->sortMetaCopyFence = frameContext->fence;
     scratch->sortMetaCopyFenceValue = frameContext->submissionFenceValue;
@@ -3809,6 +3847,11 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   stats.gaussiansVisible += std::min<uint32_t>(scratch->lastVisibleCount, runtime.sceneGaussianCount);
   stats.sortPasses += sortPassCount;
   stats.sortBackend = activeSortBackend;
+  stats.projectionActiveThreads.minValue = 0.0f;
+  stats.projectionActiveThreads.maxValue = 256.0f;
+  for (size_t i = 0; i < scratch->lastProjectionActiveThreadBins.size(); ++i) {
+    stats.projectionActiveThreads.bins[i] = static_cast<float>(scratch->lastProjectionActiveThreadBins[i]);
+  }
 
   if (outResult != nullptr) {
     outResult->stats = stats;

@@ -2,6 +2,7 @@ add_executable(DirectXSplatCoreTests
   DiagnosticReferenceTests.cpp
   LayoutInvariantTests.cpp
   LoaderMatrixTests.cpp
+  RendererStatisticsTests.cpp
   RenderSettingsTests.cpp
   SceneIoTests.cpp
   SortTests.cpp

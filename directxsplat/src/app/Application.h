@@ -44,6 +44,7 @@ class Application {
   void ApplyInitialFraming(const Scene& scene);
   void ApplyCameraSetToActiveScene();
   void UpdateSelectedInputCamera();
+  void UpdateGraphData(const Scene* activeScene);
   void HandleDoubleClickFocus();
   void RequestTraversalScene(size_t index, bool activateWhenReady);
   size_t FindLoadedSceneIndexByPath(const std::string& path) const;
@@ -76,6 +77,8 @@ class Application {
   bool guiVisible_ = true;
   bool guiToggleWasDown_ = false;
   FrameStats frameStats_{};
+  ViewerGraphData graphData_{};
+  const Scene* graphScene_ = nullptr;
   float smoothedFrameMs_ = 0.0f;
   float smoothedFps_ = 0.0f;
 
