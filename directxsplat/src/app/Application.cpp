@@ -745,12 +745,12 @@ void Application::UpdateGraphData(const Scene* activeScene) {
   PushGraphSample(graphData_.fps, smoothedFps_);
   PushGraphSample(graphData_.visible, VisiblePercentageSample(frameStats_));
   if (activeScene != graphScene_) {
-    graphData_.splatAlpha = activeScene != nullptr ? BuildSplatAlphaHistogram(*activeScene, graphData_.splatAlpha.bins.size())
+    graphData_.splatAlpha = activeScene != nullptr ? BuildSplatAlphaHistogram(*activeScene, kSplatAlphaHistogramBins)
                                                    : HistogramData{};
     graphScene_ = activeScene;
   }
   graphData_.projectionActiveThreads =
-      BuildProjectionActiveThreadsHistogram(frameStats_, graphData_.projectionActiveThreads.bins.size());
+      BuildProjectionActiveThreadsHistogram(frameStats_, kProjectionActiveThreadHistogramBins);
 }
 
 void Application::HandleDoubleClickFocus() {

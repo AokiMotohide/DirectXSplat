@@ -60,9 +60,16 @@ TEST_CASE("Projection Active Threads graph labels are exact") {
 
 TEST_CASE("Statistics graph titles are exact") {
   CHECK(std::string(dxsplat::StatisticsGraphTitle(dxsplat::StatisticsGraph::Fps)) == "FPS");
-  CHECK(std::string(dxsplat::StatisticsGraphTitle(dxsplat::StatisticsGraph::Visible)) == "Visible");
+  CHECK(std::string(dxsplat::StatisticsGraphTitle(dxsplat::StatisticsGraph::Visible)) == "Visible Points (%)");
   CHECK(std::string(dxsplat::StatisticsGraphTitle(dxsplat::StatisticsGraph::SplatAlphaHistogram)) ==
         "Splat Alpha Histogram");
   CHECK(std::string(dxsplat::StatisticsGraphTitle(dxsplat::StatisticsGraph::ProjectionActiveThreads)) ==
         "Projection Active Threads");
+}
+
+TEST_CASE("Line graph labels match SplatStream") {
+  CHECK(std::string(dxsplat::StatisticsGraphColumnTitle(dxsplat::StatisticsGraph::Fps)) == "Time");
+  CHECK(std::string(dxsplat::StatisticsGraphRowTitle(dxsplat::StatisticsGraph::Fps)) == "FPS");
+  CHECK(std::string(dxsplat::StatisticsGraphColumnTitle(dxsplat::StatisticsGraph::Visible)) == "Time");
+  CHECK(std::string(dxsplat::StatisticsGraphRowTitle(dxsplat::StatisticsGraph::Visible)) == "Visible (%)");
 }

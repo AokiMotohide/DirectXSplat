@@ -97,7 +97,7 @@ const char* StatisticsGraphTitle(StatisticsGraph graph) {
     case StatisticsGraph::Fps:
       return "FPS";
     case StatisticsGraph::Visible:
-      return "Visible";
+      return "Visible Points (%)";
     case StatisticsGraph::SplatAlphaHistogram:
       return "Splat Alpha Histogram";
     case StatisticsGraph::ProjectionActiveThreads:
@@ -110,9 +110,9 @@ const char* StatisticsGraphTitle(StatisticsGraph graph) {
 const char* StatisticsGraphColumnTitle(StatisticsGraph graph) {
   switch (graph) {
     case StatisticsGraph::Fps:
-      return "FPS";
+      return "Time";
     case StatisticsGraph::Visible:
-      return "Visible";
+      return "Time";
     case StatisticsGraph::SplatAlphaHistogram:
       return "Alpha";
     case StatisticsGraph::ProjectionActiveThreads:
@@ -127,7 +127,7 @@ const char* StatisticsGraphRowTitle(StatisticsGraph graph) {
     case StatisticsGraph::Fps:
       return "FPS";
     case StatisticsGraph::Visible:
-      return "Visible";
+      return "Visible (%)";
     case StatisticsGraph::SplatAlphaHistogram:
     case StatisticsGraph::ProjectionActiveThreads:
       return "Count";

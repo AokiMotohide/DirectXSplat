@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <imgui.h>
 #include <string>
@@ -55,8 +56,36 @@ namespace {
 
 constexpr float kRadToDeg = 57.295779513f;
 constexpr float kDegToRad = 0.0174532925199f;
-constexpr float kControlsWidth = 292.0f;
+constexpr float kControlsWidth = 306.0f;
 constexpr float kStatsMaxWidth = 300.0f;
+constexpr float kPi = 3.14159265358979323846f;
+constexpr float kGraphPlotLeft = 64.0f;
+constexpr float kGraphPlotRight = 8.0f;
+constexpr float kGraphTickLabelWidth = 36.0f;
+
+ImU32 GraphPanelColor() {
+  return IM_COL32(17, 38, 62, 255);
+}
+
+ImU32 GraphPlotColor() {
+  return IM_COL32(12, 14, 16, 255);
+}
+
+ImU32 GraphGridColor() {
+  return IM_COL32(86, 92, 100, 112);
+}
+
+ImU32 GraphBorderColor() {
+  return IM_COL32(83, 88, 96, 210);
+}
+
+ImU32 GraphLineColor() {
+  return IM_COL32(74, 128, 190, 255);
+}
+
+ImU32 GraphBarColor() {
+  return GraphLineColor();
+}
 
 uint64_t VisibleSplats(const UiFrameData& frame) {
   return frame.stats != nullptr ? frame.stats->gaussiansVisible : 0;
@@ -115,25 +144,6 @@ uint64_t TotalSplats(const UiFrameData& frame) {
 
 void RenderTraversalControls(UiFrameData& frame, UiActions& actions);
 
-void MetricU64(const char* label, uint64_t value, const char* suffix = "") {
-  ImGui::Text("%-13s: %llu%s", label, static_cast<unsigned long long>(value), suffix);
-}
-
-void MetricFloat(const char* label, float value, const char* suffix = "") {
-  ImGui::Text("%-13s: %.3f%s", label, value, suffix);
-}
-
-void MetricTime(const char* label, float value, float total) {
-  const float pct = total > 0.0f ? (value / total) * 100.0f : 0.0f;
-  ImGui::Text("%-13s: %.3fms %.1f%%", label, value, pct);
-}
-
-void CompactSeparator() {
-  ImGui::Spacing();
-  ImGui::Separator();
-  ImGui::Spacing();
-}
-
 void RenderActionButtons(UiActions& actions) {
   if (ImGui::Button("open") && actions.openScene) {
     actions.openScene();
@@ -152,60 +162,8 @@ void RenderActionButtons(UiActions& actions) {
   }
 }
 
-void RenderStats(const UiFrameData& frame) {
-  const FrameStats* stats = frame.stats;
-  const uint64_t totalSplats = TotalSplats(frame);
-  const uint64_t residentSplats =
-      stats != nullptr && stats->residentGaussians > 0 ? stats->residentGaussians : totalSplats;
-  if (!frame.gpuName.empty()) {
-    ImGui::TextUnformatted(frame.gpuName.c_str());
-  }
-  MetricU64("total splats", totalSplats);
-  MetricU64("loaded splats", residentSplats);
-
-  if (stats != nullptr) {
-    if (stats->gaussiansTotal > 0) {
-      const float visiblePct = static_cast<float>(stats->gaussiansVisible) * 100.0f / static_cast<float>(stats->gaussiansTotal);
-      ImGui::Text("%-13s: %llu splats (%.2f%%)", "visible", static_cast<unsigned long long>(stats->gaussiansVisible), visiblePct);
-    } else {
-      MetricU64("visible", stats->gaussiansVisible, " splats");
-    }
-    if (frame.renderWidth > 0 && frame.renderHeight > 0) {
-      ImGui::Text("%-13s: %u x %u", "size", frame.renderWidth, frame.renderHeight);
-    }
-    MetricFloat("fps", frame.fps);
-    MetricFloat("frame e2e", frame.frameMs, "ms");
-    if (stats->gpuMs > 0.0f) {
-      MetricFloat("gpu total", stats->gpuMs, "ms");
-      MetricTime("prepare", stats->gpuPrepareMs, stats->gpuMs);
-      MetricTime("sort", stats->gpuSortMs, stats->gpuMs);
-      MetricTime("raster", stats->gpuRasterMs, stats->gpuMs);
-      if (stats->gpuDepthMs > 0.0f) {
-        MetricTime("depth", stats->gpuDepthMs, stats->gpuMs);
-      }
-    }
-    if (stats->cpuMs > 0.0f) {
-      MetricFloat("cpu", stats->cpuMs, "ms");
-    }
-    if (stats->residentChunks > 0) {
-      MetricU64("chunks", stats->residentChunks);
-    }
-    if (stats->streamedUploads > 0 || stats->streamedEvictions > 0) {
-      ImGui::Text("%-13s: +%llu / -%llu", "streaming", static_cast<unsigned long long>(stats->streamedUploads),
-                  static_cast<unsigned long long>(stats->streamedEvictions));
-    }
-  }
-
-  if (frame.comparisonAvailable) {
-    MetricFloat("mae", static_cast<float>(frame.comparison.mae));
-    MetricFloat("mse", static_cast<float>(frame.comparison.mse));
-    MetricFloat("psnr", static_cast<float>(frame.comparison.psnr));
-    MetricFloat("flip", static_cast<float>(frame.comparison.flipLike));
-  }
-}
-
-float MaxGraphValue(const std::vector<float>& values, float fallback) {
-  float maxValue = fallback;
+float MaxGraphValue(const std::vector<float>& values) {
+  float maxValue = 0.0f;
   for (float value : values) {
     maxValue = std::max(maxValue, value);
   }
@@ -213,60 +171,412 @@ float MaxGraphValue(const std::vector<float>& values, float fallback) {
 }
 
 float MaxHistogramValue(const HistogramData& histogram) {
-  float maxValue = 1.0f;
+  float maxValue = 0.0f;
   for (float value : histogram.bins) {
     maxValue = std::max(maxValue, value);
   }
   return maxValue;
 }
 
-void RenderLineGraph(StatisticsGraph graph, const GraphSeries& series, float scaleFallback) {
+struct GraphTick {
+  float value = 0.0f;
+  bool showLabel = true;
+  std::string label;
+  ImVec2 labelSize{};
+};
+
+double NiceNumber(double value, bool roundValue) {
+  if (value <= 0.0f) {
+    return 1.0f;
+  }
+  const double exponent = std::floor(std::log10(value));
+  const double fraction = value / std::pow(10.0, exponent);
+  double niceFraction = 1.0;
+  if (roundValue) {
+    if (fraction < 1.5f) {
+      niceFraction = 1.0f;
+    } else if (fraction < 3.0f) {
+      niceFraction = 2.0f;
+    } else if (fraction < 7.0f) {
+      niceFraction = 5.0f;
+    } else {
+      niceFraction = 10.0f;
+    }
+  } else {
+    if (fraction <= 1.0f) {
+      niceFraction = 1.0f;
+    } else if (fraction <= 2.0f) {
+      niceFraction = 2.0f;
+    } else if (fraction <= 5.0f) {
+      niceFraction = 5.0f;
+    } else {
+      niceFraction = 10.0f;
+    }
+  }
+  return niceFraction * std::pow(10.0, exponent);
+}
+
+std::string FormatScientificTick(double value) {
+  char buffer[32]{};
+  std::snprintf(buffer, sizeof(buffer), "%.0e", value);
+  std::string out = buffer;
+  const size_t e = out.find('e');
+  if (e == std::string::npos) {
+    return out;
+  }
+  std::string mantissa = out.substr(0, e);
+  std::string exponent = out.substr(e + 1u);
+  bool negative = false;
+  if (!exponent.empty() && (exponent[0] == '+' || exponent[0] == '-')) {
+    negative = exponent[0] == '-';
+    exponent.erase(exponent.begin());
+  }
+  while (exponent.size() > 1u && exponent[0] == '0') {
+    exponent.erase(exponent.begin());
+  }
+  return mantissa + (negative ? "e-" : "e") + exponent;
+}
+
+std::string FormatTick(double value, float maxWidth) {
+  char buffer[32]{};
+  std::snprintf(buffer, sizeof(buffer), "%g", value);
+  std::string label = buffer;
+  if (maxWidth > 0.0f && ImGui::CalcTextSize(label.c_str()).x > maxWidth && value != 0.0) {
+    label = FormatScientificTick(value);
+  }
+  return label;
+}
+
+GraphTick MakeGraphTick(double value, bool showLabel, bool constrainLabel) {
+  GraphTick tick{};
+  tick.value = static_cast<float>(value);
+  tick.showLabel = showLabel;
+  if (showLabel) {
+    tick.label = FormatTick(value, constrainLabel ? kGraphTickLabelWidth : 0.0f);
+    tick.labelSize = ImGui::CalcTextSize(tick.label.c_str());
+  }
+  return tick;
+}
+
+bool ContainsTick(double minValue, double maxValue, double value) {
+  return value >= minValue && value <= maxValue;
+}
+
+std::vector<GraphTick> BuildImPlotTicks(float minValue, float maxValue, float pixels, bool vertical) {
+  if (minValue == maxValue) {
+    return {};
+  }
+
+  const int nMinor = 10;
+  const int nMajor = std::max(2, static_cast<int>(std::round(pixels / (vertical ? 300.0f : 400.0f))));
+  const double niceRange = NiceNumber(static_cast<double>(maxValue - minValue) * 0.99, false);
+  const double interval = NiceNumber(niceRange / static_cast<double>(nMajor - 1), true);
+  if (interval <= 0.0) {
+    return {};
+  }
+
+  const double graphMin = std::floor(static_cast<double>(minValue) / interval) * interval;
+  const double graphMax = std::ceil(static_cast<double>(maxValue) / interval) * interval;
+  bool firstMajorSet = false;
+  int firstMajorIndex = 0;
+  ImVec2 totalSize{};
+  std::vector<GraphTick> ticks;
+  for (double major = graphMin; major < graphMax + 0.5 * interval; major += interval) {
+    if (major - interval < 0.0 && major + interval > 0.0) {
+      major = 0.0;
+    }
+    if (ContainsTick(minValue, maxValue, major)) {
+      if (!firstMajorSet) {
+        firstMajorIndex = static_cast<int>(ticks.size());
+        firstMajorSet = true;
+      }
+      GraphTick tick = MakeGraphTick(major, true, vertical);
+      totalSize.x += tick.labelSize.x;
+      totalSize.y += tick.labelSize.y;
+      ticks.push_back(tick);
+    }
+    for (int i = 1; i < nMinor; ++i) {
+      const double minor = major + i * interval / static_cast<double>(nMinor);
+      if (ContainsTick(minValue, maxValue, minor)) {
+        GraphTick tick = MakeGraphTick(minor, true, vertical);
+        totalSize.x += tick.labelSize.x;
+        totalSize.y += tick.labelSize.y;
+        ticks.push_back(tick);
+      }
+    }
+  }
+
+  if ((!vertical && totalSize.x > pixels * 0.8f) || (vertical && totalSize.y > pixels)) {
+    for (int i = firstMajorIndex - 1; i >= 0; i -= 2) {
+      ticks[static_cast<size_t>(i)].showLabel = false;
+    }
+    for (size_t i = static_cast<size_t>(firstMajorIndex + 1); i < ticks.size(); i += 2u) {
+      ticks[i].showLabel = false;
+    }
+  }
+  return ticks;
+}
+
+void DrawRotatedText(ImDrawList* drawList, ImVec2 pos, const char* text, ImU32 color, float angle, float textScale) {
+  ImFont* font = ImGui::GetFont();
+  const float fontSize = ImGui::GetFontSize();
+  const float scale = fontSize / font->FontSize * textScale;
+  const float cosA = std::cos(angle);
+  const float sinA = std::sin(angle);
+  auto rotate = [&](float x, float y) {
+    return ImVec2(pos.x + x * cosA - y * sinA, pos.y + x * sinA + y * cosA);
+  };
+
+  drawList->PushTextureID(font->ContainerAtlas->TexID);
+  float x = 0.0f;
+  for (const char* c = text; *c != '\0'; ++c) {
+    const unsigned char ch = static_cast<unsigned char>(*c);
+    if (ch == ' ') {
+      x += font->GetCharAdvance(ch) * scale;
+      continue;
+    }
+    const ImFontGlyph* glyph = font->FindGlyph(static_cast<ImWchar>(ch));
+    if (glyph == nullptr) {
+      continue;
+    }
+    const float x0 = x + glyph->X0 * scale;
+    const float y0 = glyph->Y0 * scale;
+    const float x1 = x + glyph->X1 * scale;
+    const float y1 = glyph->Y1 * scale;
+    drawList->PrimReserve(6, 4);
+    drawList->PrimQuadUV(rotate(x0, y0),
+                         rotate(x1, y0),
+                         rotate(x1, y1),
+                         rotate(x0, y1),
+                         ImVec2(glyph->U0, glyph->V0),
+                         ImVec2(glyph->U1, glyph->V0),
+                         ImVec2(glyph->U1, glyph->V1),
+                         ImVec2(glyph->U0, glyph->V1),
+                         color);
+    x += glyph->AdvanceX * scale;
+  }
+  drawList->PopTextureID();
+}
+
+void DrawGraphTitle(ImDrawList* drawList, ImVec2 panelMin, ImVec2 plotMin, ImVec2 plotMax, const char* title) {
+  const ImVec2 titleSize = ImGui::CalcTextSize(title);
+  const float titleX = plotMin.x + (plotMax.x - plotMin.x - titleSize.x) * 0.5f;
+  const float titleY = panelMin.y + (plotMin.y - panelMin.y - titleSize.y) * 0.5f;
+  drawList->AddText(ImVec2(titleX, titleY), ImGui::GetColorU32(ImGuiCol_Text), title);
+}
+
+float PlotY(float value, float minValue, float maxValue, float top, float bottom) {
+  const float range = std::max(maxValue - minValue, 1e-6f);
+  const float t = std::clamp((value - minValue) / range, 0.0f, 1.0f);
+  return bottom - t * (bottom - top);
+}
+
+float PlotX(float value, float minValue, float maxValue, float left, float right) {
+  const float range = std::max(maxValue - minValue, 1e-6f);
+  const float t = std::clamp((value - minValue) / range, 0.0f, 1.0f);
+  return left + t * (right - left);
+}
+
+void DrawGraphFrame(ImDrawList* drawList,
+                    ImVec2 plotMin,
+                    ImVec2 plotMax,
+                    const char* rowTitle,
+                    const char* columnTitle,
+                    const std::vector<GraphTick>& yTicks,
+                    const std::vector<GraphTick>& xTicks,
+                    float yMin,
+                    float yMax,
+                    float xMin,
+                    float xMax,
+                    bool showXLabels) {
+  const ImU32 plotBg = GraphPlotColor();
+  const ImU32 border = GraphBorderColor();
+  const ImU32 grid = GraphGridColor();
+  const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+
+  drawList->AddRectFilled(plotMin, plotMax, plotBg);
+  drawList->AddRect(plotMin, plotMax, border);
+
+  for (const GraphTick& tick : yTicks) {
+    const float y = PlotY(tick.value, yMin, yMax, plotMin.y, plotMax.y);
+    drawList->AddLine(ImVec2(plotMin.x, y), ImVec2(plotMax.x, y), grid);
+    if (tick.showLabel) {
+      const float labelRight = plotMin.x - 7.0f;
+      drawList->AddText(ImVec2(labelRight - tick.labelSize.x, y - tick.labelSize.y * 0.5f),
+                        text,
+                        tick.label.c_str());
+    }
+  }
+
+  for (const GraphTick& tick : xTicks) {
+    const float x = PlotX(tick.value, xMin, xMax, plotMin.x, plotMax.x);
+    drawList->AddLine(ImVec2(x, plotMin.y), ImVec2(x, plotMax.y), grid);
+    if (showXLabels && tick.showLabel) {
+      drawList->AddText(ImVec2(x - tick.labelSize.x * 0.5f, plotMax.y + 5.0f), text, tick.label.c_str());
+    }
+  }
+
+  const ImVec2 rowSize = ImGui::CalcTextSize(rowTitle);
+  const float plotHeight = plotMax.y - plotMin.y;
+  const float rowScale = std::min(1.0f, (plotHeight - 4.0f) / std::max(rowSize.x, 1.0f));
+  const float rowCenterX = plotMin.x - 48.0f;
+  const float rowCenterY = plotMin.y + plotHeight * 0.5f;
+  DrawRotatedText(drawList,
+                  ImVec2(rowCenterX - ImGui::GetFontSize() * rowScale * 0.5f,
+                         rowCenterY + rowSize.x * rowScale * 0.5f),
+                  rowTitle,
+                  text,
+                  -kPi * 0.5f,
+                  rowScale);
+  if (showXLabels) {
+    const ImVec2 columnSize = ImGui::CalcTextSize(columnTitle);
+    drawList->AddText(ImVec2(plotMin.x + (plotMax.x - plotMin.x - columnSize.x) * 0.5f,
+                             plotMax.y + ImGui::GetFontSize() + 10.0f),
+                      text,
+                      columnTitle);
+  }
+}
+
+void BeginGraphPanel(const char* id, float height, ImVec2& contentMin, float& contentWidth) {
+  ImGui::PushID(id);
+  contentMin = ImGui::GetCursorScreenPos();
+  contentWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
+  ImGui::Dummy(ImVec2(contentWidth, height));
+  ImGui::GetWindowDrawList()->AddRectFilled(contentMin,
+                                            ImVec2(contentMin.x + contentWidth, contentMin.y + height),
+                                            GraphPanelColor());
+}
+
+void EndGraphPanel() {
+  ImGui::PopID();
+}
+
+void RenderLineGraph(StatisticsGraph graph, const GraphSeries& series) {
   const char* title = StatisticsGraphTitle(graph);
   const char* columnTitle = StatisticsGraphColumnTitle(graph);
   const char* rowTitle = StatisticsGraphRowTitle(graph);
-  ImGui::TextUnformatted(title);
-  ImGui::TextUnformatted(rowTitle);
   std::vector<float> values = OrderedGraphSamples(series);
   if (values.empty()) {
     values.push_back(0.0f);
   }
-  const std::string id = std::string("##") + title;
-  ImGui::PlotLines(id.c_str(),
-                   values.data(),
-                   static_cast<int>(values.size()),
-                   0,
-                   nullptr,
-                   0.0f,
-                   MaxGraphValue(values, scaleFallback),
-                   ImVec2(250.0f, 42.0f));
-  ImGui::TextUnformatted(columnTitle);
+
+  ImVec2 contentMin{};
+  float contentWidth = 0.0f;
+  const float panelHeight = 100.0f;
+  BeginGraphPanel((std::string("##panel") + title).c_str(), panelHeight, contentMin, contentWidth);
+
+  const float dataMax = MaxGraphValue(values);
+  const float yMargin = dataMax * 0.05f;
+  const float yMin = graph == StatisticsGraph::Visible ? -5.0f : -yMargin;
+  const float yMax = graph == StatisticsGraph::Visible ? 105.0f : dataMax + yMargin;
+  const float plotHeight = 61.0f;
+  const std::vector<GraphTick> yTicks = BuildImPlotTicks(yMin, yMax, plotHeight, true);
+  const ImVec2 plotMin(contentMin.x + kGraphPlotLeft, contentMin.y + 30.0f);
+  const ImVec2 plotMax(std::max(plotMin.x + 1.0f, contentMin.x + contentWidth - kGraphPlotRight),
+                       plotMin.y + plotHeight);
+  const float xMax = static_cast<float>(std::max<size_t>(values.size(), 2u) - 1u);
+  const std::vector<GraphTick> xTicks = BuildImPlotTicks(0.0f, xMax, plotMax.x - plotMin.x, false);
+  DrawGraphTitle(ImGui::GetWindowDrawList(), contentMin, plotMin, plotMax, title);
+  DrawGraphFrame(ImGui::GetWindowDrawList(),
+                 plotMin,
+                 plotMax,
+                 rowTitle,
+                 columnTitle,
+                 yTicks,
+                 xTicks,
+                 yMin,
+                 yMax,
+                 0.0f,
+                 xMax,
+                 false);
+
+  std::vector<ImVec2> points;
+  points.reserve(values.size());
+  for (size_t i = 0; i < values.size(); ++i) {
+    const float x = PlotX(static_cast<float>(i), 0.0f, xMax, plotMin.x, plotMax.x);
+    const float y = PlotY(values[i], yMin, yMax, plotMin.y, plotMax.y);
+    points.push_back(ImVec2(x, y));
+  }
+  ImGui::GetWindowDrawList()->PushClipRect(plotMin, plotMax, true);
+  if (points.size() > 1u) {
+    ImGui::GetWindowDrawList()->AddPolyline(points.data(),
+                                            static_cast<int>(points.size()),
+                                            GraphLineColor(),
+                                            0,
+                                            1.0f);
+  } else if (!points.empty()) {
+    ImGui::GetWindowDrawList()->AddCircleFilled(points[0], 1.5f, GraphLineColor());
+  }
+  ImGui::GetWindowDrawList()->PopClipRect();
+
+  EndGraphPanel();
 }
 
 void RenderHistogramGraph(StatisticsGraph graph, const HistogramData& histogram) {
   const char* title = StatisticsGraphTitle(graph);
   const char* columnTitle = StatisticsGraphColumnTitle(graph);
   const char* rowTitle = StatisticsGraphRowTitle(graph);
-  ImGui::TextUnformatted(title);
-  ImGui::TextUnformatted(rowTitle);
-  const std::string id = std::string("##") + title;
-  ImGui::PlotHistogram(id.c_str(),
-                       histogram.bins.data(),
-                       static_cast<int>(histogram.bins.size()),
-                       0,
-                       nullptr,
-                       0.0f,
-                       MaxHistogramValue(histogram),
-                       ImVec2(250.0f, 42.0f));
-  ImGui::TextUnformatted(columnTitle);
+
+  ImVec2 contentMin{};
+  float contentWidth = 0.0f;
+  const float panelHeight = 200.0f;
+  BeginGraphPanel((std::string("##panel") + title).c_str(), panelHeight, contentMin, contentWidth);
+
+  const float maxCount = MaxHistogramValue(histogram);
+  const bool empty = maxCount <= 0.0f;
+  const float yMin = empty ? -0.5f : 0.0f;
+  const float yMax = empty ? 0.5f : maxCount;
+  const float plotHeight = 126.0f;
+  const std::vector<GraphTick> yTicks = BuildImPlotTicks(yMin, yMax, plotHeight, true);
+  const bool alphaGraph = graph == StatisticsGraph::SplatAlphaHistogram;
+  const size_t binCount = alphaGraph ? kSplatAlphaHistogramBins : kProjectionActiveThreadHistogramBins;
+  const float barWidth = alphaGraph ? (1.0f / static_cast<float>(binCount)) * 0.67f : 0.67f;
+  const float xMin = alphaGraph ? 0.0f - barWidth * 0.5f : 1.0f - barWidth * 0.5f;
+  const float xMax =
+      alphaGraph ? (static_cast<float>(binCount - 1u) / static_cast<float>(binCount)) + barWidth * 0.5f
+                 : static_cast<float>(binCount) + barWidth * 0.5f;
+  const ImVec2 plotMin(contentMin.x + kGraphPlotLeft, contentMin.y + 34.0f);
+  const ImVec2 plotMax(std::max(plotMin.x + 1.0f, contentMin.x + contentWidth - kGraphPlotRight),
+                       plotMin.y + plotHeight);
+  const std::vector<GraphTick> xTicks = BuildImPlotTicks(xMin, xMax, plotMax.x - plotMin.x, false);
+  DrawGraphTitle(ImGui::GetWindowDrawList(), contentMin, plotMin, plotMax, title);
+  DrawGraphFrame(ImGui::GetWindowDrawList(),
+                 plotMin,
+                 plotMax,
+                 rowTitle,
+                 columnTitle,
+                 yTicks,
+                 xTicks,
+                 yMin,
+                 yMax,
+                 xMin,
+                 xMax,
+                 true);
+
+  const float zeroY = PlotY(0.0f, yMin, yMax, plotMin.y, plotMax.y);
+  const ImU32 barColor = GraphBarColor();
+  ImGui::GetWindowDrawList()->PushClipRect(plotMin, plotMax, true);
+  for (size_t i = 0; i < binCount; ++i) {
+    const float center = alphaGraph ? static_cast<float>(i) / static_cast<float>(binCount) : static_cast<float>(i + 1u);
+    const float halfWidth = barWidth * 0.5f;
+    const float x0 = PlotX(center - halfWidth, xMin, xMax, plotMin.x, plotMax.x);
+    const float x1 = PlotX(center + halfWidth, xMin, xMax, plotMin.x, plotMax.x);
+    const float y = PlotY(histogram.bins[i], yMin, yMax, plotMin.y, plotMax.y);
+    if (histogram.bins[i] > 0.0f) {
+      ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(x0, y), ImVec2(std::max(x0, x1), zeroY), barColor);
+    }
+  }
+  ImGui::GetWindowDrawList()->PopClipRect();
+
+  EndGraphPanel();
 }
 
 void RenderStatisticsGraphs(const UiFrameData& frame) {
   ViewerGraphData emptyGraphs{};
   const ViewerGraphData& graphs = frame.graphData != nullptr ? *frame.graphData : emptyGraphs;
 
-  CompactSeparator();
-  RenderLineGraph(StatisticsGraph::Fps, graphs.fps, 120.0f);
-  RenderLineGraph(StatisticsGraph::Visible, graphs.visible, 100.0f);
+  RenderLineGraph(StatisticsGraph::Fps, graphs.fps);
+  RenderLineGraph(StatisticsGraph::Visible, graphs.visible);
   RenderHistogramGraph(StatisticsGraph::SplatAlphaHistogram, graphs.splatAlpha);
   RenderHistogramGraph(StatisticsGraph::ProjectionActiveThreads, graphs.projectionActiveThreads);
 }
@@ -471,12 +781,8 @@ void RenderCameraSection(UiFrameData& frame) {
 
 void RenderAnimationSection(UiFrameData&) {}
 
-void RenderStatisticsSection(UiFrameData& frame) {
-  RenderStats(frame);
-  RenderStatisticsGraphs(frame);
-}
-
 void RenderPinnedStatsWindow(const UiFrameData& frame) {
+  const auto labels = UiSectionLabels();
   const ImGuiIO& io = ImGui::GetIO();
   ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 10.0f, 10.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
   ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(kStatsMaxWidth, 1000.0f));
@@ -489,6 +795,9 @@ void RenderPinnedStatsWindow(const UiFrameData& frame) {
     ImGui::TextUnformatted(FormatPinnedSize(frame.renderWidth, frame.renderHeight).c_str());
     ImGui::TextUnformatted(FormatPinnedSplats(total).c_str());
     ImGui::TextUnformatted(FormatPinnedVisible(VisibleSplats(frame), total).c_str());
+    if (ImGui::CollapsingHeader(labels[4])) {
+      RenderStatisticsGraphs(frame);
+    }
   }
   ImGui::End();
 }
@@ -513,9 +822,6 @@ void RenderLeftControlsWindow(UiFrameData& frame, UiActions& actions) {
     }
     if (ImGui::CollapsingHeader(labels[3])) {
       RenderAnimationSection(frame);
-    }
-    if (ImGui::CollapsingHeader(labels[4])) {
-      RenderStatisticsSection(frame);
     }
   }
   ImGui::End();

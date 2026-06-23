@@ -78,6 +78,9 @@ struct GraphSeries {
   size_t head = 0;
 };
 
+constexpr size_t kSplatAlphaHistogramBins = 50;
+constexpr size_t kProjectionActiveThreadHistogramBins = 64;
+
 struct HistogramData {
   std::array<float, 64> bins{};
   float minValue = 0.0f;
