@@ -11,6 +11,8 @@ class Viewer::Impl {
  public:
   Status Initialize(const ViewerConfig& config);
   Status Load(const std::filesystem::path& scenePath);
+  Status SetSplats(const GaussianSplats& splats);
+  Status SetCameras(const CameraSet& cameras);
   Status Run();
   void RequestClose();
 

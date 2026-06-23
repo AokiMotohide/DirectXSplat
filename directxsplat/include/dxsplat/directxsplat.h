@@ -102,6 +102,8 @@ class Viewer {
 
   Status Initialize(const ViewerConfig& config = {});
   Status Load(const std::filesystem::path& scenePath);
+  Status SetSplats(const GaussianSplats& splats);
+  Status SetCameras(const CameraSet& cameras);
   Status Run();
   void RequestClose();
 
@@ -112,5 +114,7 @@ class Viewer {
 
 Status Show(const ViewerConfig& config = {});
 Status Show(const std::filesystem::path& scenePath);
+Status Show(const GaussianSplats& splats, const ViewerConfig& config = {});
+Status Show(const GaussianSplats& splats, const CameraSet& cameras, const ViewerConfig& config = {});
 
 }  // namespace dxsplat

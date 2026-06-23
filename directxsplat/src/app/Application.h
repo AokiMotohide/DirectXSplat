@@ -26,6 +26,9 @@ class Application {
 
   Status Initialize(const ViewerConfig& config);
   Status Load(const std::filesystem::path& scenePath);
+  Status SetScene(Scene scene);
+  Status SetCameraSet(CameraSet cameras);
+  const CameraSet& ActiveCameraSet() const;
   Status Run();
   void RequestClose();
   void Shutdown();
@@ -39,6 +42,8 @@ class Application {
   void UpdateInput(float dt);
   void UpdateBackgroundSceneLoading();
   void ApplyInitialFraming(const Scene& scene);
+  void ApplyCameraSetToActiveScene();
+  void UpdateSelectedInputCamera();
   void HandleDoubleClickFocus();
   void RequestTraversalScene(size_t index, bool activateWhenReady);
   size_t FindLoadedSceneIndexByPath(const std::string& path) const;
@@ -57,6 +62,8 @@ class Application {
 
   SceneManager sceneManager_;
   BackgroundSceneLoader traversalLoader_;
+  CameraSet cameraSet_;
+  bool cameraSetAssigned_ = false;
 
   CameraController camera_;
   RenderSettings renderSettings_{};

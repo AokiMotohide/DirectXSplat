@@ -2,6 +2,7 @@ add_executable(DirectXSplatRuntimeTests
   FacadeLoaderTests.cpp
   PublicFacadeTypesTests.cpp
   RuntimeFacadeTests.cpp
+  ViewerFacadeContractTests.cpp
 )
 
 target_link_libraries(DirectXSplatRuntimeTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
@@ -29,6 +30,19 @@ if(COMMAND directxsplat_apply_project_warnings)
 endif()
 
 directxsplat_add_test_executable(DirectXSplatPublicFacadeHeaderCompile "runtime;facade")
+
+add_executable(DirectXSplatViewerFacadeHeaderCompile
+  ViewerFacadeHeaderCompile.cpp
+)
+
+target_link_libraries(DirectXSplatViewerFacadeHeaderCompile PRIVATE DirectXSplat::DirectXSplat)
+target_compile_features(DirectXSplatViewerFacadeHeaderCompile PRIVATE cxx_std_20)
+
+if(COMMAND directxsplat_apply_project_warnings)
+  directxsplat_apply_project_warnings(DirectXSplatViewerFacadeHeaderCompile)
+endif()
+
+directxsplat_add_test_executable(DirectXSplatViewerFacadeHeaderCompile "runtime;facade")
 
 add_test(
   NAME DirectXSplatRepositoryLayout

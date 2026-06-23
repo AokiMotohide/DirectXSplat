@@ -1,7 +1,9 @@
 #include "dxsplat/directxsplat.h"
 
 #include <memory>
+#include <utility>
 
+#include "api/GaussianSplatsInternal.h"
 #include "api/ViewerInternal.h"
 
 namespace dxsplat {
@@ -24,6 +26,28 @@ Status Viewer::Impl::Load(const std::filesystem::path& scenePath) {
     return Status::Error("viewer is not initialized");
   }
   return application_.Load(scenePath);
+}
+
+Status Viewer::Impl::SetSplats(const GaussianSplats& splats) {
+  if (splats.Empty()) {
+    return Status::Error("splats are empty");
+  }
+  if (!initialized_) {
+    return Status::Error("viewer is not initialized");
+  }
+
+  Scene sceneCopy = SceneFromSplats(splats);
+  return application_.SetScene(std::move(sceneCopy));
+}
+
+Status Viewer::Impl::SetCameras(const CameraSet& cameras) {
+  if (cameras.cameras.empty()) {
+    return Status::Ok();
+  }
+  if (!initialized_) {
+    return Status::Error("viewer is not initialized");
+  }
+  return application_.SetCameraSet(cameras);
 }
 
 Status Viewer::Impl::Run() {
@@ -61,6 +85,20 @@ Status Viewer::Load(const std::filesystem::path& scenePath) {
   return impl_->Load(scenePath);
 }
 
+Status Viewer::SetSplats(const GaussianSplats& splats) {
+  if (!impl_) {
+    return Status::Error("viewer is not initialized");
+  }
+  return impl_->SetSplats(splats);
+}
+
+Status Viewer::SetCameras(const CameraSet& cameras) {
+  if (!impl_) {
+    return Status::Error("viewer is not initialized");
+  }
+  return impl_->SetCameras(cameras);
+}
+
 Status Viewer::Run() {
   if (!impl_) {
     return Status::Error("viewer is not initialized");
@@ -87,6 +125,36 @@ Status Show(const std::filesystem::path& scenePath) {
   ViewerConfig config{};
   config.initialScenePath = scenePath;
   return Show(config);
+}
+
+Status Show(const GaussianSplats& splats, const ViewerConfig& config) {
+  Viewer viewer;
+  Status status = viewer.Initialize(config);
+  if (!status.ok) {
+    return status;
+  }
+  status = viewer.SetSplats(splats);
+  if (!status.ok) {
+    return status;
+  }
+  return viewer.Run();
+}
+
+Status Show(const GaussianSplats& splats, const CameraSet& cameras, const ViewerConfig& config) {
+  Viewer viewer;
+  Status status = viewer.Initialize(config);
+  if (!status.ok) {
+    return status;
+  }
+  status = viewer.SetSplats(splats);
+  if (!status.ok) {
+    return status;
+  }
+  status = viewer.SetCameras(cameras);
+  if (!status.ok) {
+    return status;
+  }
+  return viewer.Run();
 }
 
 }  // namespace dxsplat
