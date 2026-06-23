@@ -1,6 +1,7 @@
 add_executable(DirectXSplatViewerTests
   ImGuiViewerCoreTests.cpp
   ScreenshotWriterTests.cpp
+  UiLayerTests.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/metrics/ImageMetrics.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/tools/CliOptions.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/tools/ScreenshotWriter.cpp
@@ -10,6 +11,7 @@ target_include_directories(DirectXSplatViewerTests
   PRIVATE
     ${PROJECT_SOURCE_DIR}/directxsplat/src/app
     ${PROJECT_SOURCE_DIR}/directxsplat/src
+    ${PROJECT_SOURCE_DIR}/directxsplat/src/core/internal_headers
 )
 target_link_libraries(DirectXSplatViewerTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
 target_compile_features(DirectXSplatViewerTests PRIVATE cxx_std_20)

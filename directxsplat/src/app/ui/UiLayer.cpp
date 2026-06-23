@@ -1,14 +1,57 @@
 #include "ui/UiLayer.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
 #include <imgui.h>
+#include <string>
 
 namespace dxsplat {
+
+std::string FormatPinnedFps(float fps) {
+  char buffer[96]{};
+  std::snprintf(buffer, sizeof(buffer), "%-13s: %.3f", "fps", fps);
+  return buffer;
+}
+
+std::string FormatPinnedSize(uint32_t width, uint32_t height) {
+  char buffer[96]{};
+  std::snprintf(buffer, sizeof(buffer), "%-13s: %u x %u", "size", width, height);
+  return buffer;
+}
+
+std::string FormatPinnedSplats(uint64_t total) {
+  char buffer[96]{};
+  std::snprintf(buffer, sizeof(buffer), "%-13s: %llu", "splats", static_cast<unsigned long long>(total));
+  return buffer;
+}
+
+std::string FormatPinnedVisible(uint64_t visible, uint64_t total) {
+  const double percent = total > 0 ? static_cast<double>(visible) * 100.0 / static_cast<double>(total) : 0.0;
+  char buffer[128]{};
+  std::snprintf(buffer,
+                sizeof(buffer),
+                "%-13s: %llu splats (%.2f%%)",
+                "visible",
+                static_cast<unsigned long long>(visible),
+                percent);
+  return buffer;
+}
+
+std::array<const char*, 5> UiSectionLabels() {
+  return {"Graphic", "Scene", "Camera", "Animation", "Statistics"};
+}
 
 namespace {
 
 constexpr float kRadToDeg = 57.295779513f;
 constexpr float kDegToRad = 0.0174532925199f;
+constexpr float kControlsWidth = 292.0f;
+constexpr float kStatsMaxWidth = 300.0f;
+
+uint64_t VisibleSplats(const UiFrameData& frame) {
+  return frame.stats != nullptr ? frame.stats->gaussiansVisible : 0;
+}
 
 int NavigatorModeToIndex(NavigatorMode mode) {
   switch (mode) {
@@ -56,6 +99,13 @@ uint64_t CountSceneSplats(const Scene* scene) {
   return total;
 }
 
+uint64_t TotalSplats(const UiFrameData& frame) {
+  const uint64_t sceneSplats = CountSceneSplats(frame.scene);
+  return frame.stats != nullptr && frame.stats->gaussiansTotal > 0 ? frame.stats->gaussiansTotal : sceneSplats;
+}
+
+void RenderTraversalControls(UiFrameData& frame, UiActions& actions);
+
 void MetricU64(const char* label, uint64_t value, const char* suffix = "") {
   ImGui::Text("%-13s: %llu%s", label, static_cast<unsigned long long>(value), suffix);
 }
@@ -95,8 +145,7 @@ void RenderActionButtons(UiActions& actions) {
 
 void RenderStats(const UiFrameData& frame) {
   const FrameStats* stats = frame.stats;
-  const uint64_t sceneSplats = CountSceneSplats(frame.scene);
-  const uint64_t totalSplats = stats != nullptr && stats->gaussiansTotal > 0 ? stats->gaussiansTotal : sceneSplats;
+  const uint64_t totalSplats = TotalSplats(frame);
   const uint64_t residentSplats =
       stats != nullptr && stats->residentGaussians > 0 ? stats->residentGaussians : totalSplats;
   if (!frame.gpuName.empty()) {
@@ -146,15 +195,49 @@ void RenderStats(const UiFrameData& frame) {
   }
 }
 
-void RenderToggleRow(UiFrameData& frame) {
-  if (frame.vsyncEnabled != nullptr) {
-    ImGui::Checkbox("Vsync", frame.vsyncEnabled);
-    ImGui::SameLine();
-  }
-  ImGui::Checkbox("AA", &frame.settings->antialiasing);
+void RenderLineGraph(const char* title, const char* columnTitle, const char* rowTitle, float value, float scaleMax) {
+  ImGui::TextUnformatted(title);
+  ImGui::TextUnformatted(rowTitle);
+  const float values[2] = {value, value};
+  const std::string id = std::string("##") + title;
+  ImGui::PlotLines(id.c_str(), values, 2, 0, nullptr, 0.0f, std::max(scaleMax, 1.0f), ImVec2(250.0f, 42.0f));
+  ImGui::TextUnformatted(columnTitle);
 }
 
-void RenderRenderControls(UiFrameData& frame) {
+void RenderHistogramGraph(const char* title, const char* columnTitle, const char* rowTitle) {
+  ImGui::TextUnformatted(title);
+  ImGui::TextUnformatted(rowTitle);
+  std::array<float, 64> values{};
+  const std::string id = std::string("##") + title;
+  ImGui::PlotHistogram(id.c_str(), values.data(), static_cast<int>(values.size()), 0, nullptr, 0.0f, 1.0f, ImVec2(250.0f, 42.0f));
+  ImGui::TextUnformatted(columnTitle);
+}
+
+void RenderStatisticsGraphs(const UiFrameData& frame) {
+  const uint64_t total = TotalSplats(frame);
+  const uint64_t visible = VisibleSplats(frame);
+  const float visiblePct = total > 0 ? static_cast<float>(visible) * 100.0f / static_cast<float>(total) : 0.0f;
+
+  CompactSeparator();
+  RenderLineGraph("FPS", "FPS", "FPS", frame.fps, std::max(frame.fps, 120.0f));
+  RenderLineGraph("Visible", "Visible", "Visible", visiblePct, 100.0f);
+  RenderHistogramGraph("Splat Alpha Histogram", "Alpha", "Count");
+  RenderHistogramGraph("Projection Active Threads", "Threads", "Count");
+}
+
+void RenderGraphicSection(UiFrameData& frame) {
+  if (frame.vsyncEnabled != nullptr) {
+    ImGui::Checkbox("VSync", frame.vsyncEnabled);
+  }
+  ImGui::Checkbox("Fast culling", &frame.settings->fastCulling);
+  ImGui::Checkbox("AA", &frame.settings->antialiasing);
+  ImGui::SetNextItemWidth(128.0f);
+  ImGui::SliderFloat("##aastrength", &frame.settings->antialiasingStrength, 0.0f, 2.5f, "%.2f");
+  ImGui::SameLine();
+  ImGui::TextUnformatted("aa");
+}
+
+void RenderSceneSection(UiFrameData& frame, UiActions& actions) {
   ImGui::SetNextItemWidth(128.0f);
   ImGui::SliderFloat("##scalemod", &frame.settings->gaussianScalingModifier, 0.001f, 2.0f, "%.3f");
   ImGui::SameLine();
@@ -163,18 +246,13 @@ void RenderRenderControls(UiFrameData& frame) {
   ImGui::SliderFloat("##maxaxispixels", &frame.settings->maxAxisPixels, 1.0f, 512.0f, "%.0f");
   ImGui::SameLine();
   ImGui::TextUnformatted("projection");
-  ImGui::SetNextItemWidth(128.0f);
-  ImGui::SliderFloat("##aastrength", &frame.settings->antialiasingStrength, 0.0f, 2.5f, "%.2f");
-  ImGui::SameLine();
-  ImGui::TextUnformatted("aa");
-  RenderToggleRow(frame);
-  ImGui::Checkbox("Fast culling", &frame.settings->fastCulling);
   if (frame.settings->fastCulling) {
     ImGui::SetNextItemWidth(128.0f);
     ImGui::SliderFloat("##frustumdilation", &frame.settings->frustumDilation, 0.0f, 0.25f, "%.3f");
     ImGui::SameLine();
     ImGui::TextUnformatted("dilation");
   }
+  RenderTraversalControls(frame, actions);
 }
 
 void RenderTraversalControls(UiFrameData& frame, UiActions& actions) {
@@ -311,6 +389,62 @@ void RenderCameraControls(UiFrameData& frame) {
   RenderCameraSnapControls(frame);
 }
 
+void RenderCameraSection(UiFrameData& frame) {
+  RenderCameraControls(frame);
+}
+
+void RenderAnimationSection(UiFrameData&) {}
+
+void RenderStatisticsSection(UiFrameData& frame) {
+  RenderStats(frame);
+  RenderStatisticsGraphs(frame);
+}
+
+void RenderPinnedStatsWindow(const UiFrameData& frame) {
+  const ImGuiIO& io = ImGui::GetIO();
+  ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 10.0f, 10.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+  ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(kStatsMaxWidth, 1000.0f));
+  const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                 ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar |
+                                 ImGuiWindowFlags_NoCollapse;
+  if (ImGui::Begin("DirectXSplatStats", nullptr, flags)) {
+    const uint64_t total = TotalSplats(frame);
+    ImGui::TextUnformatted(FormatPinnedFps(frame.fps).c_str());
+    ImGui::TextUnformatted(FormatPinnedSize(frame.renderWidth, frame.renderHeight).c_str());
+    ImGui::TextUnformatted(FormatPinnedSplats(total).c_str());
+    ImGui::TextUnformatted(FormatPinnedVisible(VisibleSplats(frame), total).c_str());
+  }
+  ImGui::End();
+}
+
+void RenderLeftControlsWindow(UiFrameData& frame, UiActions& actions) {
+  const auto labels = UiSectionLabels();
+  ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(kControlsWidth, 0.0f), ImVec2(kControlsWidth, 1000.0f));
+  const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                 ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar |
+                                 ImGuiWindowFlags_NoCollapse;
+  if (ImGui::Begin("DirectXSplatControls", nullptr, flags)) {
+    RenderActionButtons(actions);
+    if (ImGui::CollapsingHeader(labels[0], ImGuiTreeNodeFlags_DefaultOpen)) {
+      RenderGraphicSection(frame);
+    }
+    if (ImGui::CollapsingHeader(labels[1], ImGuiTreeNodeFlags_DefaultOpen)) {
+      RenderSceneSection(frame, actions);
+    }
+    if (ImGui::CollapsingHeader(labels[2], ImGuiTreeNodeFlags_DefaultOpen)) {
+      RenderCameraSection(frame);
+    }
+    if (ImGui::CollapsingHeader(labels[3])) {
+      RenderAnimationSection(frame);
+    }
+    if (ImGui::CollapsingHeader(labels[4])) {
+      RenderStatisticsSection(frame);
+    }
+  }
+  ImGui::End();
+}
+
 void PushOverlayStyle() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(7.0f, 5.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 3.0f));
@@ -342,25 +476,12 @@ void UiLayer::Render(UiFrameData& frame, UiActions& actions) {
   }
 
   if (frame.showMetrics != nullptr) {
-    showMetricsPanel_ = true;
     *frame.showMetrics = true;
   }
 
   PushOverlayStyle();
-  ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
-  ImGui::SetNextWindowSizeConstraints(ImVec2(292.0f, 0.0f), ImVec2(292.0f, 1000.0f));
-  const ImGuiWindowFlags flags =
-      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing;
-  if (ImGui::Begin("DirectXSplat", nullptr, flags)) {
-    RenderActionButtons(actions);
-    RenderStats(frame);
-    CompactSeparator();
-    RenderRenderControls(frame);
-    RenderTraversalControls(frame, actions);
-    CompactSeparator();
-    RenderCameraControls(frame);
-  }
-  ImGui::End();
+  RenderLeftControlsWindow(frame, actions);
+  RenderPinnedStatsWindow(frame);
   PopOverlayStyle();
 }
 

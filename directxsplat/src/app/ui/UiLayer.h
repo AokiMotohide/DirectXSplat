@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -46,12 +48,15 @@ struct UiFrameData {
   bool comparisonAvailable = false;
 };
 
+std::string FormatPinnedFps(float fps);
+std::string FormatPinnedSize(uint32_t width, uint32_t height);
+std::string FormatPinnedSplats(uint64_t total);
+std::string FormatPinnedVisible(uint64_t visible, uint64_t total);
+std::array<const char*, 5> UiSectionLabels();
+
 class UiLayer {
  public:
   void Render(UiFrameData& frame, UiActions& actions);
-
- private:
-  bool showMetricsPanel_ = true;
 };
 
 }  // namespace dxsplat
