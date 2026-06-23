@@ -13,6 +13,7 @@
 #include "dxsplat/renderer.h"
 #include "dxsplat/settings.h"
 #include "platform/Win32Window.h"
+#include "render/CameraFrameRenderer.h"
 #include "scene/SceneManager.h"
 #include "tools/ScreenshotWriter.h"
 #include "ui/UiLayer.h"
@@ -43,7 +44,9 @@ class Application {
   void UpdateBackgroundSceneLoading();
   void ApplyInitialFraming(const Scene& scene);
   void ApplyCameraSetToActiveScene();
+  void CaptureActiveSceneCameraSet();
   void UpdateSelectedInputCamera();
+  void SelectCameraIndex(int32_t index);
   void UpdateGraphData(const Scene* activeScene);
   void HandleDoubleClickFocus();
   void RequestTraversalScene(size_t index, bool activateWhenReady);
@@ -65,6 +68,8 @@ class Application {
   BackgroundSceneLoader traversalLoader_;
   CameraSet cameraSet_;
   bool cameraSetAssigned_ = false;
+  CameraUiState cameraUi_{};
+  CameraFrameRenderer cameraFrameRenderer_;
 
   CameraController camera_;
   RenderSettings renderSettings_{};

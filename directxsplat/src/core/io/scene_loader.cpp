@@ -3,6 +3,7 @@
 #include "filesystem.hpp"
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <new>
@@ -11,6 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "api/CameraSetInternal.h"
 #include "io/common/string_util.h"
 #include "io/formats/ply/loader.h"
 #include "io/formats/sog/loader.h"
@@ -332,6 +334,21 @@ void LoadInputCameras(const fs::path& scenePath, const std::string& imageOverrid
     }
     return value;
   };
+
+  StatusOr<CameraSet> loadedCameras = dxsplat::LoadCameraSet(std::filesystem::path(cameraPath.string()));
+  if (loadedCameras.ok()) {
+    for (size_t i = 0; i < loadedCameras.value.cameras.size(); ++i) {
+      InputCamera cam = dxsplat::InputCameraFromCameraParams(loadedCameras.value.cameras[i], i);
+      if (i < json.size() && json[i].is_object()) {
+        cam.sourceImage = readCameraString(json[i], "image", "");
+      }
+      if (!imageOverrideDir.empty() && !cam.sourceImage.empty()) {
+        cam.sourceImage = (fs::path(imageOverrideDir) / cam.sourceImage).string();
+      }
+      scene.inputCameras.push_back(std::move(cam));
+    }
+    return;
+  }
 
   for (const auto& j : json) {
     if (!j.is_object()) {

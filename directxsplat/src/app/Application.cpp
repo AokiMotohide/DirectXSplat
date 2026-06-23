@@ -17,6 +17,7 @@
 #include <backends/imgui_impl_dx12.h>
 #include <backends/imgui_impl_win32.h>
 
+#include "api/CameraSetInternal.h"
 #include "dxsplat/bounding.h"
 #include "tools/ScenePathValidation.h"
 
@@ -27,64 +28,6 @@ namespace dxsplat {
 namespace fs = std::filesystem;
 
 namespace {
-
-Quat QuaternionFromBasis(const Vec3& right, const Vec3& up, const Vec3& forward) {
-  const float m00 = right.x;
-  const float m01 = up.x;
-  const float m02 = forward.x;
-  const float m10 = right.y;
-  const float m11 = up.y;
-  const float m12 = forward.y;
-  const float m20 = right.z;
-  const float m21 = up.z;
-  const float m22 = forward.z;
-
-  const float trace = m00 + m11 + m22;
-  Quat out{};
-  if (trace > 0.0f) {
-    const float s = std::sqrt(trace + 1.0f) * 2.0f;
-    out.w = 0.25f * s;
-    out.x = (m21 - m12) / s;
-    out.y = (m02 - m20) / s;
-    out.z = (m10 - m01) / s;
-  } else if (m00 > m11 && m00 > m22) {
-    const float s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
-    out.w = (m21 - m12) / s;
-    out.x = 0.25f * s;
-    out.y = (m01 + m10) / s;
-    out.z = (m02 + m20) / s;
-  } else if (m11 > m22) {
-    const float s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
-    out.w = (m02 - m20) / s;
-    out.x = (m01 + m10) / s;
-    out.y = 0.25f * s;
-    out.z = (m12 + m21) / s;
-  } else {
-    const float s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
-    out.w = (m10 - m01) / s;
-    out.x = (m02 + m20) / s;
-    out.y = (m12 + m21) / s;
-    out.z = 0.25f * s;
-  }
-  return Normalize(out);
-}
-
-InputCamera InputCameraFromCameraParams(const CameraParams& camera, size_t index) {
-  const auto& e = camera.extrinsic;
-  const Vec3 right = Normalize(Vec3{e[0], e[1], e[2]});
-  const Vec3 down = Normalize(Vec3{e[4], e[5], e[6]});
-  const Vec3 forward = Normalize(Vec3{e[8], e[9], e[10]});
-  const Vec3 up = down * -1.0f;
-
-  InputCamera out{};
-  out.name = camera.name.empty() ? "camera " + std::to_string(index) : camera.name;
-  out.position = right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
-  out.rotation = QuaternionFromBasis(right, up, forward);
-  if (camera.height > 0 && camera.intrinsic[4] > 0.0f) {
-    out.fovYRadians = 2.0f * std::atan(static_cast<float>(camera.height) * 0.5f / camera.intrinsic[4]);
-  }
-  return out;
-}
 
 std::vector<InputCamera> InputCamerasFromCameraSet(const CameraSet& cameraSet) {
   std::vector<InputCamera> out;
@@ -141,6 +84,10 @@ Status Application::Initialize(const ViewerConfig& config) {
   }
 
   status = renderer_.Initialize(coreContext_);
+  if (!status.ok) {
+    return status;
+  }
+  status = cameraFrameRenderer_.Initialize(d3d_.Device(), DXGI_FORMAT_R8G8B8A8_UNORM);
   if (!status.ok) {
     return status;
   }
@@ -355,8 +302,21 @@ Status Application::Run() {
 
     UpdateGraphData(activeScene);
 
+    Status cameraFrameStatus = cameraFrameRenderer_.Render(d3d_.CommandList(),
+                                                           target.colorRtv,
+                                                           d3d_.Viewport(),
+                                                           d3d_.ScissorRect(),
+                                                           input.view,
+                                                           input.proj,
+                                                           cameraSet_,
+                                                           cameraUi_);
+    if (!cameraFrameStatus.ok) {
+      statusMessage_ = cameraFrameStatus.message;
+    }
+
     UiFrameData uiFrame{};
     uiFrame.settings = &renderSettings_;
+    uiFrame.cameraUi = &cameraUi_;
     uiFrame.selectedInputCamera = &selectedInputCamera_;
     uiFrame.renderWidthOverride = &renderWidthOverride_;
     uiFrame.renderHeightOverride = &renderHeightOverride_;
@@ -374,6 +334,7 @@ Status Application::Run() {
     uiFrame.frameMs = smoothedFrameMs_;
     uiFrame.renderWidth = input.viewportWidth;
     uiFrame.renderHeight = input.viewportHeight;
+    uiFrame.cameraCount = cameraSet_.cameras.size();
     uiFrame.traversalEnabled = traversalEnabled_;
     uiFrame.traversalSceneCount = traversalLoader_.SceneCount();
     uiFrame.traversalCurrentIndex = traversalRequestedIndex_;
@@ -392,6 +353,10 @@ Status Application::Run() {
       if (sceneManager_.Scenes().empty()) return;
       size_t idx = (sceneManager_.ActiveSceneIndex() + 1) % sceneManager_.Scenes().size();
       sceneManager_.SetActiveSceneIndex(idx);
+      if (!cameraSetAssigned_) {
+        CaptureActiveSceneCameraSet();
+      }
+      UpdateSelectedInputCamera();
       ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
     actions.prevScene = [this]() {
@@ -404,6 +369,10 @@ Status Application::Run() {
       size_t idx = sceneManager_.ActiveSceneIndex() == 0 ? sceneManager_.Scenes().size() - 1
                                                           : sceneManager_.ActiveSceneIndex() - 1;
       sceneManager_.SetActiveSceneIndex(idx);
+      if (!cameraSetAssigned_) {
+        CaptureActiveSceneCameraSet();
+      }
+      UpdateSelectedInputCamera();
       ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
     actions.resetView = [this]() {
@@ -412,6 +381,7 @@ Status Application::Run() {
       }
     };
     actions.exitApplication = [this]() { window_.RequestClose(); };
+    actions.selectCamera = [this](int32_t index) { SelectCameraIndex(index); };
 
     if (guiVisible_) {
       ui_.Render(uiFrame, actions);
@@ -469,6 +439,7 @@ void Application::Shutdown() {
     statusMessage_ = idle.message;
     renderer_.NotifyDeviceLost();
   }
+  cameraFrameRenderer_.Shutdown();
 
   if (imguiInitialized_) {
     ImGui_ImplDX12_Shutdown();
@@ -507,6 +478,9 @@ Status Application::SetScene(Scene scene) {
   if (!uploadStatus.ok) {
     return uploadStatus;
   }
+  if (!cameraSetAssigned_) {
+    CaptureActiveSceneCameraSet();
+  }
   ApplyCameraSetToActiveScene();
   UpdateSelectedInputCamera();
   if (sceneManager_.ActiveScene() != nullptr) {
@@ -519,8 +493,11 @@ Status Application::SetScene(Scene scene) {
 Status Application::SetCameraSet(CameraSet cameras) {
   cameraSet_ = std::move(cameras);
   cameraSetAssigned_ = true;
+  cameraFrameRenderer_.Invalidate();
+  ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
   ApplyCameraSetToActiveScene();
   UpdateSelectedInputCamera();
+  SelectCameraIndex(cameraUi_.index);
   return Status::Ok();
 }
 
@@ -690,13 +667,10 @@ void Application::UpdateBackgroundSceneLoading() {
           if (active != std::numeric_limits<size_t>::max()) {
             sceneManager_.SetActiveSceneIndex(active);
             if (sceneManager_.ActiveScene() != nullptr) {
-              if (!sceneManager_.ActiveScene()->inputCameras.empty()) {
-                selectedInputCamera_ = std::clamp(
-                    selectedInputCamera_, 0,
-                    static_cast<int32_t>(sceneManager_.ActiveScene()->inputCameras.size() - 1));
-              } else {
-                selectedInputCamera_ = -1;
+              if (!cameraSetAssigned_) {
+                CaptureActiveSceneCameraSet();
               }
+              UpdateSelectedInputCamera();
               ApplyInitialFraming(*sceneManager_.ActiveScene());
             }
           }
@@ -730,14 +704,50 @@ void Application::ApplyCameraSetToActiveScene() {
   activeScene->inputCameras = InputCamerasFromCameraSet(cameraSet_);
 }
 
+void Application::CaptureActiveSceneCameraSet() {
+  const Scene* activeScene = sceneManager_.ActiveScene();
+  if (activeScene == nullptr) {
+    cameraSet_ = {};
+    cameraFrameRenderer_.Invalidate();
+    ClampCameraUiState(cameraUi_, 0);
+    return;
+  }
+  StatusOr<CameraSet> cameras = ConvertInputCamerasToCameraSet(*activeScene);
+  if (cameras.ok()) {
+    cameraSet_ = std::move(cameras.value);
+  } else {
+    cameraSet_ = {};
+  }
+  cameraFrameRenderer_.Invalidate();
+  ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
+}
+
 void Application::UpdateSelectedInputCamera() {
   const Scene* activeScene = sceneManager_.ActiveScene();
   if (activeScene != nullptr && !activeScene->inputCameras.empty()) {
     selectedInputCamera_ = std::clamp(
         selectedInputCamera_ < 0 ? 0 : selectedInputCamera_, 0,
         static_cast<int32_t>(activeScene->inputCameras.size() - 1));
+    cameraUi_.index = selectedInputCamera_;
   } else {
     selectedInputCamera_ = -1;
+  }
+  ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
+}
+
+void Application::SelectCameraIndex(int32_t index) {
+  if (cameraSet_.cameras.empty()) {
+    ClampCameraUiState(cameraUi_, 0);
+    selectedInputCamera_ = -1;
+    return;
+  }
+
+  cameraUi_.index = index;
+  ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
+  selectedInputCamera_ = cameraUi_.index;
+
+  if (selectedInputCamera_ >= 0 && static_cast<size_t>(selectedInputCamera_) < cameraSet_.cameras.size()) {
+    camera_.SnapToCameraParams(cameraSet_.cameras[static_cast<size_t>(selectedInputCamera_)]);
   }
 }
 
@@ -814,6 +824,10 @@ void Application::RequestTraversalScene(size_t index, bool activateWhenReady) {
   if (existing != std::numeric_limits<size_t>::max()) {
     sceneManager_.SetActiveSceneIndex(existing);
     if (sceneManager_.ActiveScene() != nullptr) {
+      if (!cameraSetAssigned_) {
+        CaptureActiveSceneCameraSet();
+      }
+      UpdateSelectedInputCamera();
       ApplyInitialFraming(*sceneManager_.ActiveScene());
     }
     traversalActivateRequested_ = false;

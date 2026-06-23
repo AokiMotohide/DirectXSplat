@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "dxsplat/directxsplat.h"
 #include "dxsplat/math.h"
 #include "dxsplat/scene.h"
 
@@ -53,6 +54,7 @@ class CameraController {
   void SetOrbitPivot(const Vec3& pivot);
 
   void SnapToInputCamera(const InputCamera& camera);
+  void SnapToCameraParams(const CameraParams& camera);
   bool SnapToClosestInputCamera(const std::vector<InputCamera>& cameras);
 
   Mat4 ViewMatrix() const;

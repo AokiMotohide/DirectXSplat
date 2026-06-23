@@ -1,0 +1,29 @@
+#include <doctest/doctest.h>
+
+#include <array>
+#include <string>
+
+#include "ui/UiLayer.h"
+
+TEST_CASE("Camera UI labels are exact") {
+  const std::array<const char*, 3> labels = dxsplat::UiCameraLabels();
+
+  CHECK(std::string(labels[0]) == "Show camera frames");
+  CHECK(std::string(labels[1]) == "frame size");
+  CHECK(std::string(labels[2]) == "index");
+}
+
+TEST_CASE("index clamps when camera set shrinks") {
+  dxsplat::CameraUiState state{};
+  state.index = 5;
+
+  dxsplat::ClampCameraUiState(state, 3);
+  CHECK(state.index == 2);
+
+  dxsplat::ClampCameraUiState(state, 1);
+  CHECK(state.index == 0);
+
+  state.index = 4;
+  dxsplat::ClampCameraUiState(state, 0);
+  CHECK(state.index == 0);
+}

@@ -20,10 +20,18 @@ struct UiActions {
   std::function<void()> prevScene;
   std::function<void()> resetView;
   std::function<void()> exitApplication;
+  std::function<void(int32_t)> selectCamera;
+};
+
+struct CameraUiState {
+  bool showCameraFrames = false;
+  float frameSize = 0.1f;
+  int32_t index = 0;
 };
 
 struct UiFrameData {
   RenderSettings* settings = nullptr;
+  CameraUiState* cameraUi = nullptr;
   int32_t* selectedInputCamera = nullptr;
   uint32_t* renderWidthOverride = nullptr;
   uint32_t* renderHeightOverride = nullptr;
@@ -41,6 +49,7 @@ struct UiFrameData {
   float frameMs = 0.0f;
   uint32_t renderWidth = 0;
   uint32_t renderHeight = 0;
+  size_t cameraCount = 0;
   bool traversalEnabled = false;
   size_t traversalSceneCount = 0;
   size_t traversalCurrentIndex = 0;
@@ -56,6 +65,8 @@ std::string FormatPinnedVisible(uint64_t visible, uint64_t total);
 std::array<const char*, 5> UiSectionLabels();
 std::array<const char*, 5> UiGraphicLabels();
 std::array<const char*, 11> UiSceneLabels();
+std::array<const char*, 3> UiCameraLabels();
+void ClampCameraUiState(CameraUiState& state, size_t cameraCount);
 
 class UiLayer {
  public:

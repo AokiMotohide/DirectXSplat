@@ -52,10 +52,21 @@ std::array<const char*, 11> UiSceneLabels() {
   return {"Render type", "color", "alpha", "depth", "Background", "R", "G", "B", "scale", "projection", "dilation"};
 }
 
+std::array<const char*, 3> UiCameraLabels() {
+  return {"Show camera frames", "frame size", "index"};
+}
+
+void ClampCameraUiState(CameraUiState& state, size_t cameraCount) {
+  state.frameSize = std::clamp(state.frameSize, 0.001f, 10.0f);
+  if (cameraCount == 0) {
+    state.index = 0;
+    return;
+  }
+  state.index = std::clamp(state.index, 0, static_cast<int32_t>(cameraCount - 1u));
+}
+
 namespace {
 
-constexpr float kRadToDeg = 57.295779513f;
-constexpr float kDegToRad = 0.0174532925199f;
 constexpr float kControlsWidth = 306.0f;
 constexpr float kStatsMaxWidth = 300.0f;
 constexpr float kPi = 3.14159265358979323846f;
@@ -89,41 +100,6 @@ ImU32 GraphBarColor() {
 
 uint64_t VisibleSplats(const UiFrameData& frame) {
   return frame.stats != nullptr ? frame.stats->gaussiansVisible : 0;
-}
-
-int NavigatorModeToIndex(NavigatorMode mode) {
-  switch (mode) {
-    case NavigatorMode::Orbit:
-    case NavigatorMode::Trackball:
-      return 1;
-    case NavigatorMode::Fps:
-    default:
-      return 0;
-  }
-}
-
-NavigatorMode NavigatorModeFromIndex(int index) {
-  switch (index) {
-    case 1:
-      return NavigatorMode::Orbit;
-    case 0:
-    default:
-      return NavigatorMode::Fps;
-  }
-}
-
-int FindClosestInputCamera(const Scene& scene, const Vec3& position) {
-  int best = -1;
-  float bestDistance = 3.402823466e+38f;
-  for (int i = 0; i < static_cast<int>(scene.inputCameras.size()); ++i) {
-    const Vec3 delta = scene.inputCameras[static_cast<size_t>(i)].position - position;
-    const float distance = Dot(delta, delta);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = i;
-    }
-  }
-  return best;
 }
 
 uint64_t CountSceneSplats(const Scene* scene) {
@@ -657,126 +633,30 @@ void RenderTraversalControls(UiFrameData& frame, UiActions& actions) {
               static_cast<unsigned long long>(frame.traversalSceneCount));
 }
 
-void RenderCameraSnapControls(UiFrameData& frame) {
-  if (frame.scene == nullptr || frame.camera == nullptr || frame.selectedInputCamera == nullptr) {
-    return;
-  }
-  if (frame.scene->inputCameras.empty()) {
-    return;
-  }
+void RenderCameraSection(UiFrameData& frame, UiActions& actions) {
+  CameraUiState localState{};
+  CameraUiState& state = frame.cameraUi != nullptr ? *frame.cameraUi : localState;
+  ClampCameraUiState(state, frame.cameraCount);
 
-  *frame.selectedInputCamera =
-      std::clamp(*frame.selectedInputCamera, 0, static_cast<int32_t>(frame.scene->inputCameras.size() - 1));
-
-  const char* preview = frame.scene->inputCameras[static_cast<size_t>(*frame.selectedInputCamera)].name.c_str();
-  ImGui::SetNextItemWidth(180.0f);
-  if (ImGui::BeginCombo("##inputcamera", preview)) {
-    for (int i = 0; i < static_cast<int>(frame.scene->inputCameras.size()); ++i) {
-      const bool selected = i == *frame.selectedInputCamera;
-      if (ImGui::Selectable(frame.scene->inputCameras[static_cast<size_t>(i)].name.c_str(), selected)) {
-        *frame.selectedInputCamera = i;
-      }
-      if (selected) {
-        ImGui::SetItemDefaultFocus();
-      }
-    }
-    ImGui::EndCombo();
+  const auto labels = UiCameraLabels();
+  const bool disabled = frame.cameraCount == 0;
+  if (disabled) {
+    ImGui::BeginDisabled();
   }
-  ImGui::SameLine();
-  ImGui::TextUnformatted("camera");
-
-  if (ImGui::Button("snap")) {
-    frame.camera->SnapToInputCamera(frame.scene->inputCameras[static_cast<size_t>(*frame.selectedInputCamera)]);
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("closest")) {
-    const int closest = FindClosestInputCamera(*frame.scene, frame.camera->State().position);
-    if (closest >= 0) {
-      *frame.selectedInputCamera = closest;
-      frame.camera->SnapToInputCamera(frame.scene->inputCameras[static_cast<size_t>(closest)]);
+  ImGui::Checkbox(labels[0], &state.showCameraFrames);
+  ImGui::SliderFloat(labels[1], &state.frameSize, 0.001f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+  const int maxIndex = frame.cameraCount > 0 ? static_cast<int>(frame.cameraCount - 1u) : 0;
+  int index = state.index;
+  if (ImGui::SliderInt(labels[2], &index, 0, maxIndex)) {
+    state.index = index;
+    ClampCameraUiState(state, frame.cameraCount);
+    if (actions.selectCamera) {
+      actions.selectCamera(state.index);
     }
   }
-}
-
-void RenderCameraControls(UiFrameData& frame) {
-  CameraState state = frame.camera->State();
-  bool changed = false;
-
-  const int navigatorIndex = NavigatorModeToIndex(state.navigatorMode);
-  if (ImGui::RadioButton("FPS", navigatorIndex == 0)) {
-    state.navigatorMode = NavigatorModeFromIndex(0);
-    changed = true;
+  if (disabled) {
+    ImGui::EndDisabled();
   }
-  ImGui::SameLine();
-  if (ImGui::RadioButton("Orbit", navigatorIndex == 1)) {
-    state.navigatorMode = NavigatorModeFromIndex(1);
-    changed = true;
-  }
-
-  float fovDeg = state.fovYRadians * kRadToDeg;
-  ImGui::SetNextItemWidth(174.0f);
-  if (ImGui::SliderFloat("##fov", &fovDeg, 1.0f, 120.0f, "%.3f")) {
-    state.fovYRadians = std::clamp(fovDeg, 1.0f, 180.0f) * kDegToRad;
-    changed = true;
-  }
-  ImGui::SameLine();
-  ImGui::TextUnformatted("Fov Y");
-
-  float clipping[2] = {state.nearPlane, state.farPlane};
-  ImGui::SetNextItemWidth(174.0f);
-  if (ImGui::InputFloat2("##clipping", clipping, "%.3f")) {
-    state.nearPlane = std::max(clipping[0], 0.0001f);
-    state.farPlane = std::max(clipping[1], state.nearPlane + 0.001f);
-    changed = true;
-  }
-  ImGui::SameLine();
-  ImGui::TextUnformatted("clip");
-
-  float translation[3] = {state.position.x, state.position.y, state.position.z};
-  ImGui::TextUnformatted("Translation");
-  ImGui::SetNextItemWidth(174.0f);
-  if (ImGui::InputFloat3("##translation", translation, "%.3f")) {
-    state.position = {translation[0], translation[1], translation[2]};
-    changed = true;
-  }
-
-  float rotation[3] = {state.yaw * kRadToDeg, state.pitch * kRadToDeg, state.roll * kRadToDeg};
-  ImGui::TextUnformatted("Rotation");
-  ImGui::SetNextItemWidth(174.0f);
-  if (ImGui::InputFloat3("##rotation", rotation, "%.3f")) {
-    state.yaw = rotation[0] * kDegToRad;
-    state.pitch = rotation[1] * kDegToRad;
-    state.roll = rotation[2] * kDegToRad;
-    changed = true;
-  }
-
-  ImGui::SetNextItemWidth(174.0f);
-  if (ImGui::SliderFloat("##movespeed", &state.movementSpeed, 0.001f, 100.0f, "%.3f")) {
-    changed = true;
-  }
-  ImGui::SameLine();
-  ImGui::TextUnformatted("speed");
-
-  ImGui::SetNextItemWidth(174.0f);
-  if (ImGui::SliderFloat("##rotspeed", &state.rotationSpeed, 0.05f, 5.0f, "%.2f")) {
-    changed = true;
-  }
-  ImGui::SameLine();
-  ImGui::TextUnformatted("turn");
-
-  if (ImGui::Checkbox("Acceleration", &state.useAcceleration)) {
-    changed = true;
-  }
-
-  if (changed) {
-    frame.camera->SetState(state);
-  }
-
-  RenderCameraSnapControls(frame);
-}
-
-void RenderCameraSection(UiFrameData& frame) {
-  RenderCameraControls(frame);
 }
 
 void RenderAnimationSection(UiFrameData&) {}
@@ -818,7 +698,7 @@ void RenderLeftControlsWindow(UiFrameData& frame, UiActions& actions) {
       RenderSceneSection(frame, actions);
     }
     if (ImGui::CollapsingHeader(labels[2], ImGuiTreeNodeFlags_DefaultOpen)) {
-      RenderCameraSection(frame);
+      RenderCameraSection(frame, actions);
     }
     if (ImGui::CollapsingHeader(labels[3])) {
       RenderAnimationSection(frame);

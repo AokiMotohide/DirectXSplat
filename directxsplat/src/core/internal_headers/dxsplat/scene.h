@@ -37,7 +37,20 @@ struct InputCamera {
   Vec3 position{};
   Quat rotation{};
   float fovYRadians = 1.0471975512f;
+  Mat4 extrinsic{};
+  Mat3 intrinsic{};
+  uint32_t width = 0;
+  uint32_t height = 0;
+  bool hasMatrixParams = false;
   std::string sourceImage;
+};
+
+struct ViewerCamera {
+  std::string name;
+  Mat4 extrinsic{};
+  Mat3 intrinsic{};
+  uint32_t width = 0;
+  uint32_t height = 0;
 };
 
 struct Scene {
