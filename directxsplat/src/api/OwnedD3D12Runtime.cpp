@@ -416,10 +416,12 @@ StatusOr<ImageRgba8> OwnedD3D12Runtime::Draw(const GaussianSplats& splats, const
   input.farPlane = options.farPlane;
   input.settings.antialiasing = options.antialiasing;
   input.settings.antialiasingStrength = options.antialiasingStrength;
+  input.settings.backgroundColor = {options.background[0], options.background[1], options.background[2]};
+  input.settings.gammaCorrection = options.gammaCorrection;
+  input.settings.renderType = options.renderType;
   input.settings.shadingDegree = options.shadingDegree;
   input.settings.outputDepth = options.renderType == RenderType::Depth;
   input.frameIndex = FrameContext().frameIndex;
-  (void)options.gammaCorrection;
 
   const RenderFrameContext frameContext = FrameContext();
   RenderPreparationResult preparation{};

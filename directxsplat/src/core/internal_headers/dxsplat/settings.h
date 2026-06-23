@@ -22,6 +22,29 @@ constexpr ShadingDegree SanitizeShadingDegree(ShadingDegree degree) {
   }
 }
 
+constexpr RenderType SanitizeRenderType(RenderType type) {
+  switch (type) {
+    case RenderType::Color:
+    case RenderType::Alpha:
+    case RenderType::Depth:
+      return type;
+    default:
+      return RenderType::Color;
+  }
+}
+
+constexpr const char* RenderTypeLabel(RenderType type) {
+  switch (SanitizeRenderType(type)) {
+    case RenderType::Alpha:
+      return "alpha";
+    case RenderType::Depth:
+      return "depth";
+    case RenderType::Color:
+    default:
+      return "color";
+  }
+}
+
 struct RenderSettings {
   bool antialiasing = true;
   float antialiasingStrength = 1.0f;
@@ -29,6 +52,9 @@ struct RenderSettings {
   float frustumDilation = 0.05f;
   float gaussianScalingModifier = 1.0f;
   bool outputDepth = false;
+  RenderType renderType = RenderType::Color;
+  Vec3 backgroundColor{0.0f, 0.0f, 0.0f};
+  bool gammaCorrection = false;
   ShadingDegree shadingDegree = ShadingDegree::Degree3;
   bool positiveViewSpaceZ = true;
   float maxAxisPixels = 256.0f;

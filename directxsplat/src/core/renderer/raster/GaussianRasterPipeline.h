@@ -122,18 +122,17 @@ class GaussianRasterPipeline {
     uint32_t paddedCount = 0;
     uint32_t setCount = 0;
     uint32_t fastCulling = 1;
-    uint32_t visualization = 0;
+    uint32_t renderType = 0;
     uint32_t antialiasingMode = 0;
     uint32_t shadingDegree = 3;
     uint32_t positiveViewSpaceZ = 1;
     float antialiasingStrength = 1.0f;
-    float pad0 = 0.0f;
+    uint32_t gammaCorrection = 0;
     uint32_t drawCapacity = 0;
     uint32_t pairCapacity = 0;
     uint32_t viewportWidth = 1;
     uint32_t viewportHeight = 1;
-    uint32_t pad1 = 0;
-    uint32_t pad2 = 0;
+    float backgroundColor[3]{};
     float farPlane = 0.0f;
     float frustumDilation = 0.05f;
     uint32_t sceneGaussianStride = 0;
@@ -143,7 +142,6 @@ class GaussianRasterPipeline {
     uint32_t shOffset = 32;
     uint32_t idOffset = 124;
     uint32_t pad3 = 0;
-    uint32_t pad4 = 0;
   };
   static_assert(sizeof(PrepConstants) == 272);
 

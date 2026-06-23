@@ -38,18 +38,17 @@ cbuffer PrepConstants : register(b0) {
   uint gPaddedCount;
   uint gSetCount;
   uint gFastCulling;
-  uint gVisualization;
+  uint gRenderType;
   uint gAntialiasingMode;
   uint gShadingDegree;
   uint gPositiveViewSpaceZ;
   float gAntialiasingStrength;
-  float gPad0;
+  uint gGammaCorrection;
   uint gDrawCapacity;
   uint gPairCapacity;
   uint gViewportWidth;
   uint gViewportHeight;
-  uint gPad1;
-  uint gPad2;
+  float3 gBackgroundColor;
   float gFarPlane;
   float gFrustumDilation;
   uint gSceneGaussianStride;
@@ -59,7 +58,6 @@ cbuffer PrepConstants : register(b0) {
   uint gShOffset;
   uint gIdOffset;
   uint gPad3;
-  uint gPad4;
 };
 
 ByteAddressBuffer gSceneGaussians : register(t0);
@@ -471,6 +469,7 @@ struct BeautyVSOut {
   nointerpolation float3 color : TEXCOORD1;
   nointerpolation float4 conicOpacity : TEXCOORD2;
   nointerpolation float alphaCutPower : TEXCOORD3;
+  nointerpolation float ndcDepth : TEXCOORD4;
 };
 
 struct DepthVSOut {
@@ -498,6 +497,7 @@ BeautyVSOut VSMainBeauty(uint vertexId : SV_VertexID, uint instanceId : SV_Insta
   o.color = g.color;
   o.conicOpacity = g.conicOpacity;
   o.alphaCutPower = g.alphaCutPower;
+  o.ndcDepth = saturate(g.clipPos.z / max(g.clipPos.w, 1e-6));
   return o;
 }
 
@@ -537,7 +537,19 @@ float4 PSMainBeauty(BeautyVSOut i) : SV_Target {
     discard;
   }
 
-  return float4(i.color, alpha);
+  if (gRenderType == 1u) {
+    return float4(float3(alpha, alpha, alpha), 1.0f);
+  }
+  if (gRenderType == 2u) {
+    const float depth = 1.0f - saturate(i.ndcDepth);
+    return float4(float3(depth, depth, depth), 1.0f);
+  }
+
+  float3 color = i.color;
+  if (gGammaCorrection != 0u) {
+    color = pow(saturate(color), 1.0f / 2.2f);
+  }
+  return float4(color, alpha);
 }
 
 float PSDepth(DepthVSOut i) : SV_Depth {

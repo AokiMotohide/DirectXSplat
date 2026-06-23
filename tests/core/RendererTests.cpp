@@ -488,6 +488,18 @@ size_t CountNonZeroPixels(const std::vector<uint8_t>& pixels) {
   return nonZero;
 }
 
+bool ImagesDiffer(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+  if (a.size() != b.size()) {
+    return true;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (a[i] != b[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  
 
 TEST_CASE("Renderer default handles and settings are safe") {
@@ -919,6 +931,45 @@ TEST_CASE("Renderer final render path works") {
   const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
   REQUIRE_FALSE(pixels.empty());
   CHECK(CountNonZeroPixels(pixels) > 0u);
+
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+}
+
+TEST_CASE("Renderer renders color alpha and depth modes") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  REQUIRE_MESSAGE(init.ok, init.message);
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+
+  auto renderMode = [&](RenderType type) {
+    RenderPreparationResult preparation{};
+    RenderResult renderResult{};
+    RenderInput input = MakeRenderInput(96, 96);
+    input.settings.maxAxisPixels = 512.0f;
+    input.settings.renderType = type;
+    const RenderFrameContext frameContext = harness.FrameContext();
+    REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+
+    OffscreenFrame frame{};
+    REQUIRE(harness.CreateOffscreenFrame(96, 96, frame).ok);
+    REQUIRE(harness.ResetCommandList().ok);
+    REQUIRE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+    harness.QueueColorReadback(frame);
+    REQUIRE(harness.ExecuteAndWait(renderResult.submission.uploadSyncPoint).ok);
+    std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+    REQUIRE_FALSE(pixels.empty());
+    CHECK(CountNonZeroPixels(pixels) > 0u);
+    return pixels;
+  };
+
+  const std::vector<uint8_t> color = renderMode(RenderType::Color);
+  const std::vector<uint8_t> alpha = renderMode(RenderType::Alpha);
+  const std::vector<uint8_t> depth = renderMode(RenderType::Depth);
+
+  CHECK(ImagesDiffer(color, alpha));
+  CHECK(ImagesDiffer(color, depth));
 
   REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
 }

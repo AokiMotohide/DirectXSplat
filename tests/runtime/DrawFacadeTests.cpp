@@ -144,4 +144,5 @@ TEST_CASE("Draw renders a tiny scene offscreen") {
   }
   CHECK(anyAlpha);
 }
+
 #endif

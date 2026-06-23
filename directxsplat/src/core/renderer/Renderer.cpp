@@ -2590,6 +2590,7 @@ class Renderer::Impl {
       return Status::Error("invalid uploaded scene handle");
     }
     RenderInput routed = input;
+    routed.settings.renderType = SanitizeRenderType(input.settings.renderType);
     routed.settings.shadingDegree = SanitizeShadingDegree(input.settings.shadingDegree);
     routed.settings.antialiasing = input.settings.antialiasing;
     std::shared_ptr<SceneRecord> record = GetSceneRecord(sceneHandle.value);

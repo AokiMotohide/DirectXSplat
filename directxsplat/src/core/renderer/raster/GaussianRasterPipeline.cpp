@@ -3371,15 +3371,22 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.maxAxisPixels = std::max(1.0f, input.settings.maxAxisPixels);
   prepBase.nearPlane = std::max(0.0001f, input.nearPlane);
   prepBase.fastCulling = input.settings.fastCulling ? 1u : 0u;
-  prepBase.visualization = 0;
+  const RenderType renderType = SanitizeRenderType(input.settings.renderType);
+  prepBase.renderType = static_cast<uint32_t>(renderType);
   prepBase.antialiasingMode = input.settings.antialiasing ? 1u : 0u;
-  prepBase.shadingDegree = static_cast<uint32_t>(input.settings.shadingDegree);
+  const ShadingDegree shadingDegree =
+      renderType == RenderType::Color ? SanitizeShadingDegree(input.settings.shadingDegree) : ShadingDegree::Dc;
+  prepBase.shadingDegree = static_cast<uint32_t>(shadingDegree);
   prepBase.positiveViewSpaceZ = input.settings.positiveViewSpaceZ ? 1u : 0u;
-  prepBase.antialiasingStrength = std::max(0.01f, input.settings.antialiasingStrength);
+  prepBase.antialiasingStrength = std::max(0.0f, input.settings.antialiasingStrength);
+  prepBase.gammaCorrection = renderType == RenderType::Color && input.settings.gammaCorrection ? 1u : 0u;
   prepBase.drawCapacity = runtime.drawCapacity;
   prepBase.pairCapacity = scratch->sortPairCapacity;
   prepBase.viewportWidth = std::max<uint32_t>(input.viewportWidth, 1u);
   prepBase.viewportHeight = std::max<uint32_t>(input.viewportHeight, 1u);
+  prepBase.backgroundColor[0] = input.settings.backgroundColor.x;
+  prepBase.backgroundColor[1] = input.settings.backgroundColor.y;
+  prepBase.backgroundColor[2] = input.settings.backgroundColor.z;
   prepBase.farPlane = std::max(input.farPlane, input.nearPlane + 0.001f);
   prepBase.frustumDilation = std::clamp(input.settings.frustumDilation, 0.0f, 1.0f);
   prepBase.sceneGaussianStride = runtime.sceneGaussianStride;

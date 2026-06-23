@@ -28,3 +28,29 @@ TEST_CASE("UiLayer exposes stable section labels") {
   CHECK(std::string(labels[3]) == "Animation");
   CHECK(std::string(labels[4]) == "Statistics");
 }
+
+TEST_CASE("UiLayer exposes stable Graphic labels") {
+  const std::array<const char*, 5> labels = dxsplat::UiGraphicLabels();
+
+  CHECK(std::string(labels[0]) == "VSync");
+  CHECK(std::string(labels[1]) == "Fast culling");
+  CHECK(std::string(labels[2]) == "Gamma correction");
+  CHECK(std::string(labels[3]) == "AA");
+  CHECK(std::string(labels[4]) == "aa");
+}
+
+TEST_CASE("UiLayer exposes stable Scene labels") {
+  const std::array<const char*, 11> labels = dxsplat::UiSceneLabels();
+
+  CHECK(std::string(labels[0]) == "Render type");
+  CHECK(std::string(labels[1]) == "color");
+  CHECK(std::string(labels[2]) == "alpha");
+  CHECK(std::string(labels[3]) == "depth");
+  CHECK(std::string(labels[4]) == "Background");
+  CHECK(std::string(labels[5]) == "R");
+  CHECK(std::string(labels[6]) == "G");
+  CHECK(std::string(labels[7]) == "B");
+  CHECK(std::string(labels[8]) == "scale");
+  CHECK(std::string(labels[9]) == "projection");
+  CHECK(std::string(labels[10]) == "dilation");
+}

@@ -53,6 +53,8 @@ std::string FormatPinnedSize(uint32_t width, uint32_t height);
 std::string FormatPinnedSplats(uint64_t total);
 std::string FormatPinnedVisible(uint64_t visible, uint64_t total);
 std::array<const char*, 5> UiSectionLabels();
+std::array<const char*, 5> UiGraphicLabels();
+std::array<const char*, 11> UiSceneLabels();
 
 class UiLayer {
  public:

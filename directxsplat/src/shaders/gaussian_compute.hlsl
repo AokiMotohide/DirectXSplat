@@ -28,18 +28,17 @@ cbuffer PrepConstants : register(b0) {
   uint gPaddedCount;
   uint gSetCount;
   uint gFastCulling;
-  uint gVisualization;
+  uint gRenderType;
   uint gAntialiasingMode;
   uint gShadingDegree;
   uint gPositiveViewSpaceZ;
   float gAntialiasingStrength;
-  float gPad0;
+  uint gGammaCorrection;
   uint gDrawCapacity;
   uint gPairCapacity;
   uint gViewportWidth;
   uint gViewportHeight;
-  uint gPad1;
-  uint gPad2;
+  float3 gBackgroundColor;
   float gFarPlane;
   float gFrustumDilation;
   uint gSceneGaussianStride;
@@ -49,7 +48,6 @@ cbuffer PrepConstants : register(b0) {
   uint gShOffset;
   uint gIdOffset;
   uint gPad3;
-  uint gPad4;
 };
 
 ByteAddressBuffer gSceneGaussians : register(t0);

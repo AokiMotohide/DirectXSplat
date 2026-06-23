@@ -42,6 +42,14 @@ std::array<const char*, 5> UiSectionLabels() {
   return {"Graphic", "Scene", "Camera", "Animation", "Statistics"};
 }
 
+std::array<const char*, 5> UiGraphicLabels() {
+  return {"VSync", "Fast culling", "Gamma correction", "AA", "aa"};
+}
+
+std::array<const char*, 11> UiSceneLabels() {
+  return {"Render type", "color", "alpha", "depth", "Background", "R", "G", "B", "scale", "projection", "dilation"};
+}
+
 namespace {
 
 constexpr float kRadToDeg = 57.295779513f;
@@ -226,32 +234,62 @@ void RenderStatisticsGraphs(const UiFrameData& frame) {
 }
 
 void RenderGraphicSection(UiFrameData& frame) {
+  const auto labels = UiGraphicLabels();
   if (frame.vsyncEnabled != nullptr) {
-    ImGui::Checkbox("VSync", frame.vsyncEnabled);
+    ImGui::Checkbox(labels[0], frame.vsyncEnabled);
   }
-  ImGui::Checkbox("Fast culling", &frame.settings->fastCulling);
-  ImGui::Checkbox("AA", &frame.settings->antialiasing);
+  ImGui::Checkbox(labels[1], &frame.settings->fastCulling);
+  ImGui::Checkbox(labels[2], &frame.settings->gammaCorrection);
+  ImGui::Checkbox(labels[3], &frame.settings->antialiasing);
   ImGui::SetNextItemWidth(128.0f);
   ImGui::SliderFloat("##aastrength", &frame.settings->antialiasingStrength, 0.0f, 2.5f, "%.2f");
   ImGui::SameLine();
-  ImGui::TextUnformatted("aa");
+  ImGui::TextUnformatted(labels[4]);
 }
 
 void RenderSceneSection(UiFrameData& frame, UiActions& actions) {
+  const auto labels = UiSceneLabels();
+  RenderType renderType = SanitizeRenderType(frame.settings->renderType);
+  ImGui::SetNextItemWidth(128.0f);
+  if (ImGui::BeginCombo("##rendertype", RenderTypeLabel(renderType))) {
+    const RenderType options[] = {RenderType::Color, RenderType::Alpha, RenderType::Depth};
+    for (RenderType option : options) {
+      const bool selected = renderType == option;
+      if (ImGui::Selectable(RenderTypeLabel(option), selected)) {
+        renderType = option;
+        frame.settings->renderType = option;
+      }
+      if (selected) {
+        ImGui::SetItemDefaultFocus();
+      }
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::SameLine();
+  ImGui::TextUnformatted(labels[0]);
+
+  float background[3] = {
+      frame.settings->backgroundColor.x,
+      frame.settings->backgroundColor.y,
+      frame.settings->backgroundColor.z,
+  };
+  ImGui::SetNextItemWidth(176.0f);
+  if (ImGui::ColorEdit3(labels[4], background, ImGuiColorEditFlags_Float)) {
+    frame.settings->backgroundColor = {background[0], background[1], background[2]};
+  }
+
   ImGui::SetNextItemWidth(128.0f);
   ImGui::SliderFloat("##scalemod", &frame.settings->gaussianScalingModifier, 0.001f, 2.0f, "%.3f");
   ImGui::SameLine();
-  ImGui::TextUnformatted("scale");
+  ImGui::TextUnformatted(labels[8]);
   ImGui::SetNextItemWidth(128.0f);
   ImGui::SliderFloat("##maxaxispixels", &frame.settings->maxAxisPixels, 1.0f, 512.0f, "%.0f");
   ImGui::SameLine();
-  ImGui::TextUnformatted("projection");
-  if (frame.settings->fastCulling) {
-    ImGui::SetNextItemWidth(128.0f);
-    ImGui::SliderFloat("##frustumdilation", &frame.settings->frustumDilation, 0.0f, 0.25f, "%.3f");
-    ImGui::SameLine();
-    ImGui::TextUnformatted("dilation");
-  }
+  ImGui::TextUnformatted(labels[9]);
+  ImGui::SetNextItemWidth(128.0f);
+  ImGui::SliderFloat("##frustumdilation", &frame.settings->frustumDilation, 0.0f, 0.25f, "%.3f");
+  ImGui::SameLine();
+  ImGui::TextUnformatted(labels[10]);
   RenderTraversalControls(frame, actions);
 }
 

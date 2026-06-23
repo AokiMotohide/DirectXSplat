@@ -305,9 +305,9 @@ Status Application::Run() {
     target.viewport = d3d_.Viewport();
     target.scissor = d3d_.ScissorRect();
     target.clearColor = true;
-    target.clearColorValue[0] = 0.06f;
-    target.clearColorValue[1] = 0.07f;
-    target.clearColorValue[2] = 0.08f;
+    target.clearColorValue[0] = renderSettings_.backgroundColor.x;
+    target.clearColorValue[1] = renderSettings_.backgroundColor.y;
+    target.clearColorValue[2] = renderSettings_.backgroundColor.z;
     target.clearColorValue[3] = 1.0f;
     if (activeUploadedScene.IsValid()) {
       RenderFrameContext frameContext{};
