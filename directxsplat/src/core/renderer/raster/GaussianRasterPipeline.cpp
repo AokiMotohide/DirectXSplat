@@ -34,12 +34,16 @@ constexpr uint32_t kOneSweepGlobalHistogramCommandIndex = 1u;
 constexpr uint32_t kOneSweepScanCommandIndex = 2u;
 constexpr uint32_t kOneSweepDigitCommandIndex = 3u;
 constexpr uint32_t kSortIndirectCommandCount = kOneSweepDigitCommandIndex + kOneSweepPassCount;
-constexpr uint32_t kSortStatsReadbackPeriod = 30;
+constexpr uint32_t kSortStatsReadbackPeriod = 1;
 constexpr float kPackedMipFilterFraction = 0.18f;
 constexpr uint32_t kMaxSceneIndexToChunkEntries = 64u * 1024u * 1024u;
+constexpr uint32_t kSplatAlphaHistogramBins = 50u;
+constexpr uint32_t kSplatAlphaHistogramOffset = 8u;
+constexpr uint32_t kSplatAlphaHistogramBytes = kSplatAlphaHistogramBins * sizeof(uint32_t);
 constexpr uint32_t kProjectionActiveThreadBins = 64u;
-constexpr uint32_t kProjectionActiveThreadHistogramOffset = 8u;
+constexpr uint32_t kProjectionActiveThreadHistogramOffset = kSplatAlphaHistogramOffset + kSplatAlphaHistogramBytes;
 constexpr uint32_t kProjectionActiveThreadHistogramBytes = kProjectionActiveThreadBins * sizeof(uint32_t);
+constexpr uint32_t kStatsHistogramBytes = kSplatAlphaHistogramBytes + kProjectionActiveThreadHistogramBytes;
 constexpr uint32_t kVisibleCounterBytes = kProjectionActiveThreadHistogramOffset + kProjectionActiveThreadHistogramBytes;
 constexpr size_t kRenderScratchRetiredResourceSlots = 16;
 constexpr DWORD kFenceWaitPollMs = 50;
@@ -1086,6 +1090,7 @@ Status GaussianRasterPipeline::ReleaseRenderScratchResources(RenderScratch& scra
   scratch.lastVisibleCount = 0;
   scratch.lastVisibleBlocks = 0;
   scratch.lastSortPassCount = 0;
+  scratch.lastSplatAlphaBins = {};
   scratch.lastProjectionActiveThreadBins = {};
   scratch.sortStatsFrame = 0;
   scratch.sortMetaCopyFrame = 0;
@@ -2150,7 +2155,7 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
     }
   }
   if (scratch.projectionActiveThreadsReadback == nullptr) {
-    Status s = CreateReadbackBuffer(kProjectionActiveThreadHistogramBytes, scratch.projectionActiveThreadsReadback);
+    Status s = CreateReadbackBuffer(kStatsHistogramBytes, scratch.projectionActiveThreadsReadback);
     if (!s.ok) {
       return s;
     }
@@ -3348,7 +3353,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     if (scratch->projectionActiveThreadsReadback != nullptr &&
         SUCCEEDED(scratch->projectionActiveThreadsReadback->Map(0, nullptr, &mapped)) && mapped != nullptr) {
       const uint32_t* bins = reinterpret_cast<const uint32_t*>(mapped);
-      std::copy_n(bins, scratch->lastProjectionActiveThreadBins.size(),
+      std::copy_n(bins, scratch->lastSplatAlphaBins.size(),
+                  scratch->lastSplatAlphaBins.begin());
+      std::copy_n(bins + scratch->lastSplatAlphaBins.size(), scratch->lastProjectionActiveThreadBins.size(),
                   scratch->lastProjectionActiveThreadBins.begin());
       scratch->projectionActiveThreadsReadback->Unmap(0, nullptr);
     }
@@ -3736,8 +3743,8 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     commandList->CopyBufferRegion(scratch->projectionActiveThreadsReadback.Get(),
                                   0,
                                   scratch->visibleCounterBuffer.Get(),
-                                  kProjectionActiveThreadHistogramOffset,
-                                  kProjectionActiveThreadHistogramBytes);
+                                  kSplatAlphaHistogramOffset,
+                                  kStatsHistogramBytes);
     scratch->sortMetaCopyFrame = scratch->sortStatsFrame;
     scratch->sortMetaCopyFence = frameContext->fence;
     scratch->sortMetaCopyFenceValue = frameContext->submissionFenceValue;
@@ -3847,8 +3854,13 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   stats.gaussiansVisible += std::min<uint32_t>(scratch->lastVisibleCount, runtime.sceneGaussianCount);
   stats.sortPasses += sortPassCount;
   stats.sortBackend = activeSortBackend;
+  stats.splatAlpha.minValue = 0.0f;
+  stats.splatAlpha.maxValue = 1.0f;
+  for (size_t i = 0; i < scratch->lastSplatAlphaBins.size(); ++i) {
+    stats.splatAlpha.bins[i] = static_cast<float>(scratch->lastSplatAlphaBins[i]);
+  }
   stats.projectionActiveThreads.minValue = 0.0f;
-  stats.projectionActiveThreads.maxValue = 256.0f;
+  stats.projectionActiveThreads.maxValue = 64.0f;
   for (size_t i = 0; i < scratch->lastProjectionActiveThreadBins.size(); ++i) {
     stats.projectionActiveThreads.bins[i] = static_cast<float>(scratch->lastProjectionActiveThreadBins[i]);
   }

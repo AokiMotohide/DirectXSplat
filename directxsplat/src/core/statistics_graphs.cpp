@@ -8,15 +8,10 @@ namespace {
 
 constexpr size_t kGraphCapacity = 256;
 constexpr size_t kHistogramCapacity = 64;
-constexpr float kProjectionThreadMax = 256.0f;
+constexpr float kProjectionThreadMax = 64.0f;
 
 size_t ClampedBinCount(size_t binCount) {
   return std::clamp<size_t>(binCount, 1, kHistogramCapacity);
-}
-
-float AlphaFromOpacity(float opacity) {
-  const float clamped = std::clamp(opacity, -20.0f, 20.0f);
-  return 1.0f / (1.0f + std::exp(-clamped));
 }
 
 void AddHistogramValue(HistogramData& histogram, float value, float count, size_t binCount) {
@@ -26,18 +21,19 @@ void AddHistogramValue(HistogramData& histogram, float value, float count, size_
   histogram.bins[bin] += count;
 }
 
-HistogramData RebinHistogram(const HistogramData& source, size_t binCount, float minValue, float maxValue) {
+HistogramData RebinHistogram(const HistogramData& source, size_t sourceBinCount, size_t binCount, float minValue, float maxValue) {
   HistogramData out{};
   out.minValue = minValue;
   out.maxValue = maxValue;
+  sourceBinCount = std::clamp<size_t>(sourceBinCount, 1, source.bins.size());
   binCount = ClampedBinCount(binCount);
 
   const float sourceRange = std::max(source.maxValue - source.minValue, 1e-6f);
-  for (size_t i = 0; i < source.bins.size(); ++i) {
+  for (size_t i = 0; i < sourceBinCount; ++i) {
     if (source.bins[i] <= 0.0f) {
       continue;
     }
-    const float unit = (static_cast<float>(i) + 0.5f) / static_cast<float>(source.bins.size());
+    const float unit = (static_cast<float>(i) + 0.5f) / static_cast<float>(sourceBinCount);
     const float value = source.minValue + unit * sourceRange;
     AddHistogramValue(out, value, source.bins[i], binCount);
   }
@@ -70,26 +66,15 @@ float VisiblePercentageSample(const FrameStats& stats) {
                             static_cast<double>(stats.gaussiansTotal));
 }
 
-HistogramData BuildSplatAlphaHistogram(const Scene& scene, size_t binCount) {
-  HistogramData histogram{};
-  histogram.minValue = 0.0f;
-  histogram.maxValue = 1.0f;
-  binCount = ClampedBinCount(binCount);
-
-  // Convert loader opacity logits to renderer alpha
-  for (const GaussianSet& set : scene.splatSets) {
-    for (const Gaussian& gaussian : set.gaussians) {
-      AddHistogramValue(histogram, AlphaFromOpacity(gaussian.opacity), 1.0f, binCount);
-    }
-  }
-  return histogram;
+HistogramData BuildSplatAlphaHistogram(const FrameStats& stats, size_t binCount) {
+  return RebinHistogram(stats.splatAlpha, kSplatAlphaHistogramBins, binCount, 0.0f, 1.0f);
 }
 
 HistogramData BuildProjectionActiveThreadsHistogram(const FrameStats& stats, size_t binCount) {
   const float sourceMax = stats.projectionActiveThreads.maxValue > stats.projectionActiveThreads.minValue
                               ? stats.projectionActiveThreads.maxValue
                               : kProjectionThreadMax;
-  return RebinHistogram(stats.projectionActiveThreads, binCount, 0.0f, sourceMax);
+  return RebinHistogram(stats.projectionActiveThreads, kProjectionActiveThreadHistogramBins, binCount, 0.0f, sourceMax);
 }
 
 const char* StatisticsGraphTitle(StatisticsGraph graph) {

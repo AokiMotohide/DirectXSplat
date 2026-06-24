@@ -182,6 +182,7 @@ class GaussianRasterPipeline {
     uint32_t lastVisibleCount = 0;
     uint32_t lastVisibleBlocks = 0;
     uint32_t lastSortPassCount = 0;
+    std::array<uint32_t, 50> lastSplatAlphaBins{};
     std::array<uint32_t, 64> lastProjectionActiveThreadBins{};
     uint32_t sortStatsFrame = 0;
     uint32_t sortMetaCopyFrame = 0;

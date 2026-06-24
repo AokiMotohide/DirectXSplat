@@ -56,14 +56,18 @@ RWStructuredBuffer<uint> gOutSortKeys : register(u0);
 RWStructuredBuffer<uint> gOutSortValues : register(u1);
 RWByteAddressBuffer gVisibleCounter : register(u2);
 
-static const uint kProjectionThreadHistogramOffset = 8u;
+static const uint kSplatAlphaHistogramBins = 50u;
+static const uint kSplatAlphaHistogramOffset = 8u;
+static const uint kProjectionThreadHistogramOffset = kSplatAlphaHistogramOffset + kSplatAlphaHistogramBins * 4u;
 static const uint kProjectionThreadHistogramBins = 64u;
+static const uint kProjectionSubgroupSize = 32u;
+static const uint kProjectionSubgroupCount = 8u;
 static const uint kFormatFloat32 = 0u;
 static const uint kFormatFloat16 = 1u;
 static const uint kFormatUint8 = 2u;
 static const float kPackedShUint8Range = 4.0f;
 
-groupshared uint gPrepareActiveThreads;
+groupshared uint gPrepareSubgroupActiveThreads[8];
 
 float DecodeHalf(uint bits) {
   return f16tof32(bits & 0xFFFFu);
@@ -302,14 +306,15 @@ uint EncodeDepthKey(float depth) {
 
 [numthreads(256, 1, 1)]
 void CSPrepare(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID) {
-  if (groupThreadId.x == 0u) {
-    gPrepareActiveThreads = 0u;
+  if (groupThreadId.x < kProjectionSubgroupCount) {
+    gPrepareSubgroupActiveThreads[groupThreadId.x] = 0u;
   }
   GroupMemoryBarrierWithGroupSync();
 
   bool active = false;
   uint idx = 0u;
   float viewDepth = 0.0f;
+  float projectedAlpha = 0.0f;
   uint chunkIndex = groupId.y;
   if (chunkIndex < gSetCount) {
     ChunkPrepGpu chunkPrep = gChunkPrep[chunkIndex];
@@ -412,19 +417,25 @@ void CSPrepare(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadI
         }
 
         active = valid;
+        projectedAlpha = opacity;
       }
     }
   }
 
   if (active) {
     uint ignored;
-    InterlockedAdd(gPrepareActiveThreads, 1u, ignored);
+    uint alphaBin = min((uint)(saturate(projectedAlpha) * (float)kSplatAlphaHistogramBins), kSplatAlphaHistogramBins - 1u);
+    gVisibleCounter.InterlockedAdd(kSplatAlphaHistogramOffset + alphaBin * 4u, 1u, ignored);
+    InterlockedAdd(gPrepareSubgroupActiveThreads[groupThreadId.x / kProjectionSubgroupSize], 1u, ignored);
   }
   GroupMemoryBarrierWithGroupSync();
-  if (groupThreadId.x == 0u) {
-    uint bin = min(gPrepareActiveThreads / 4u, kProjectionThreadHistogramBins - 1u);
-    uint ignored;
-    gVisibleCounter.InterlockedAdd(kProjectionThreadHistogramOffset + bin * 4u, 1u, ignored);
+  if (groupThreadId.x < kProjectionSubgroupCount) {
+    uint count = gPrepareSubgroupActiveThreads[groupThreadId.x];
+    if (count > 0u) {
+      uint bin = min(count - 1u, kProjectionThreadHistogramBins - 1u);
+      uint ignored;
+      gVisibleCounter.InterlockedAdd(kProjectionThreadHistogramOffset + bin * 4u, 1u, ignored);
+    }
   }
 
   if (!active) {
@@ -549,6 +560,10 @@ RWByteAddressBuffer gFinalizeSortMeta : register(u2);
 void CSReset(uint3 tid : SV_DispatchThreadID) {
   gFinalizeVisibleCounter.Store(0, 0);
   gFinalizeVisibleCounter.Store(4, 0);
+  [unroll]
+  for (uint alphaBin = 0u; alphaBin < kSplatAlphaHistogramBins; ++alphaBin) {
+    gFinalizeVisibleCounter.Store(kSplatAlphaHistogramOffset + alphaBin * 4u, 0);
+  }
   [unroll]
   for (uint i = 0u; i < kProjectionThreadHistogramBins; ++i) {
     gFinalizeVisibleCounter.Store(kProjectionThreadHistogramOffset + i * 4u, 0);

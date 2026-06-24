@@ -84,7 +84,6 @@ class Application {
   bool guiToggleWasDown_ = false;
   FrameStats frameStats_{};
   ViewerGraphData graphData_{};
-  const Scene* graphScene_ = nullptr;
   float smoothedFrameMs_ = 0.0f;
   float smoothedFps_ = 0.0f;
 

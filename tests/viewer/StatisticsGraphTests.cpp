@@ -67,7 +67,7 @@ TEST_CASE("Statistics graph titles are exact") {
         "Projection Active Threads");
 }
 
-TEST_CASE("Line graph labels match SplatStream") {
+TEST_CASE("Line graph labels match reference labels") {
   CHECK(std::string(dxsplat::StatisticsGraphColumnTitle(dxsplat::StatisticsGraph::Fps)) == "Time");
   CHECK(std::string(dxsplat::StatisticsGraphRowTitle(dxsplat::StatisticsGraph::Fps)) == "FPS");
   CHECK(std::string(dxsplat::StatisticsGraphColumnTitle(dxsplat::StatisticsGraph::Visible)) == "Time");

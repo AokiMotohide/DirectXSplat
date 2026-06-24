@@ -38,7 +38,7 @@ TEST_CASE("LoadFromPly rejects .txt path") {
   CHECK(loaded.status.message.find("expected .ply") != std::string::npos);
 }
 
-TEST_CASE("LoadCameraSet reads SplatStream camera json") {
+TEST_CASE("LoadCameraSet reads camera json") {
   const std::filesystem::path dir = MakeTempDir("directxsplat_facade_camera_json");
   const std::filesystem::path path = dir / "cameras.json";
   WriteFile(path,

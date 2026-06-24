@@ -113,6 +113,7 @@ struct FrameStats {
   float gpuDepthMs = 0.0f;
   float gpuMs = 0.0f;
   float cpuMs = 0.0f;
+  HistogramData splatAlpha{};
   HistogramData projectionActiveThreads{};
 };
 
@@ -133,7 +134,7 @@ struct RenderInput {
 void PushGraphSample(GraphSeries& series, float value);
 std::vector<float> OrderedGraphSamples(const GraphSeries& series);
 float VisiblePercentageSample(const FrameStats& stats);
-HistogramData BuildSplatAlphaHistogram(const Scene& scene, size_t binCount);
+HistogramData BuildSplatAlphaHistogram(const FrameStats& stats, size_t binCount);
 HistogramData BuildProjectionActiveThreadsHistogram(const FrameStats& stats, size_t binCount);
 const char* StatisticsGraphTitle(StatisticsGraph graph);
 const char* StatisticsGraphColumnTitle(StatisticsGraph graph);

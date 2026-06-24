@@ -491,7 +491,6 @@ Status Application::Load(const std::filesystem::path& scenePath) {
 Status Application::SetScene(Scene scene) {
   DestroyUploadedScenes();
   sceneManager_.Clear();
-  graphScene_ = nullptr;
   Status uploadStatus = UploadAndAddScene(std::move(scene));
   if (!uploadStatus.ok) {
     return uploadStatus;
@@ -791,13 +790,10 @@ void Application::SelectCameraIndex(int32_t index) {
 }
 
 void Application::UpdateGraphData(const Scene* activeScene) {
+  (void)activeScene;
   PushGraphSample(graphData_.fps, smoothedFps_);
   PushGraphSample(graphData_.visible, VisiblePercentageSample(frameStats_));
-  if (activeScene != graphScene_) {
-    graphData_.splatAlpha = activeScene != nullptr ? BuildSplatAlphaHistogram(*activeScene, kSplatAlphaHistogramBins)
-                                                   : HistogramData{};
-    graphScene_ = activeScene;
-  }
+  graphData_.splatAlpha = BuildSplatAlphaHistogram(frameStats_, kSplatAlphaHistogramBins);
   graphData_.projectionActiveThreads =
       BuildProjectionActiveThreadsHistogram(frameStats_, kProjectionActiveThreadHistogramBins);
 }

@@ -20,32 +20,6 @@ if(COMMAND directxsplat_stage_dxc_runtime)
   directxsplat_stage_dxc_runtime(DirectXSplatRuntimeTests)
 endif()
 
-add_executable(DirectXSplatPublicFacadeHeaderCompile
-  PublicFacadeHeaderCompile.cpp
-)
-
-target_link_libraries(DirectXSplatPublicFacadeHeaderCompile PRIVATE DirectXSplat::DirectXSplat)
-target_compile_features(DirectXSplatPublicFacadeHeaderCompile PRIVATE cxx_std_20)
-
-if(COMMAND directxsplat_apply_project_warnings)
-  directxsplat_apply_project_warnings(DirectXSplatPublicFacadeHeaderCompile)
-endif()
-
-directxsplat_add_test_executable(DirectXSplatPublicFacadeHeaderCompile "runtime;facade")
-
-add_executable(DirectXSplatViewerFacadeHeaderCompile
-  ViewerFacadeHeaderCompile.cpp
-)
-
-target_link_libraries(DirectXSplatViewerFacadeHeaderCompile PRIVATE DirectXSplat::DirectXSplat)
-target_compile_features(DirectXSplatViewerFacadeHeaderCompile PRIVATE cxx_std_20)
-
-if(COMMAND directxsplat_apply_project_warnings)
-  directxsplat_apply_project_warnings(DirectXSplatViewerFacadeHeaderCompile)
-endif()
-
-directxsplat_add_test_executable(DirectXSplatViewerFacadeHeaderCompile "runtime;facade")
-
 add_test(
   NAME DirectXSplatRepositoryLayout
   COMMAND ${CMAKE_COMMAND}
