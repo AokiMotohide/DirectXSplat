@@ -5,7 +5,6 @@
 #include <shlobj.h>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -29,38 +28,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr float kCameraBasisEpsilon = 1e-5f;
-
-bool Finite(float v) {
-  return std::isfinite(v);
-}
-
-template <size_t Count>
-bool Finite(const std::array<float, Count>& values) {
-  for (float value : values) {
-    if (!Finite(value)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ValidCameraBasis(const std::array<float, 16>& e) {
-  const Vec3 right{e[0], e[1], e[2]};
-  const Vec3 down{e[4], e[5], e[6]};
-  const Vec3 forward{e[8], e[9], e[10]};
-  return Length(right) > kCameraBasisEpsilon &&
-         Length(down) > kCameraBasisEpsilon &&
-         Length(forward) > kCameraBasisEpsilon;
-}
-
 Status ValidateCameraSet(const CameraSet& cameraSet) {
   for (const CameraParams& camera : cameraSet.cameras) {
-    if (camera.width == 0 || camera.height == 0 || !Finite(camera.extrinsic) || !Finite(camera.intrinsic)) {
-      return Status::Error("invalid camera set");
-    }
-    if (!ValidCameraBasis(camera.extrinsic) || camera.intrinsic[0] <= 0.0f || camera.intrinsic[4] <= 0.0f ||
-        std::abs(camera.intrinsic[8]) <= kCameraBasisEpsilon) {
+    if (!ValidateCameraParamsForRendering(camera).ok) {
       return Status::Error("invalid camera set");
     }
   }
@@ -281,6 +251,7 @@ Status Application::Run() {
     input.nearPlane = camera_.State().nearPlane;
     input.farPlane = camera_.State().farPlane;
     input.frameIndex = d3d_.FrameIndex();
+    input.cameraCut = cameraCutPending_;
     const float aspect = static_cast<float>(input.viewportWidth) / std::max(1.0f, static_cast<float>(input.viewportHeight));
     input.proj = camera_.ProjectionMatrixForAspect(aspect);
 
@@ -338,6 +309,7 @@ Status Application::Run() {
         d3d_.CommandList()->ClearRenderTargetView(target.colorRtv, target.clearColorValue, 0, nullptr);
       }
     }
+    cameraCutPending_ = false;
 
     UpdateGraphData(activeScene);
 
@@ -792,6 +764,7 @@ void Application::SelectCameraIndex(int32_t index) {
 
   if (selectedInputCamera_ >= 0 && static_cast<size_t>(selectedInputCamera_) < cameraSet_.cameras.size()) {
     camera_.SnapToCameraParams(cameraSet_.cameras[static_cast<size_t>(selectedInputCamera_)]);
+    cameraCutPending_ = true;
   }
 }
 

@@ -7,8 +7,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "api/CameraSetInternal.h"
 #include "api/GaussianSplatsInternal.h"
-#include "dxsplat/math.h"
 
 namespace dxsplat {
 
@@ -420,31 +420,12 @@ StatusOr<ImageRgba8> OwnedD3D12Runtime::Draw(const GaussianSplats& splats, const
     return StatusOr<ImageRgba8>::Error(uploadStatus.message);
   }
 
-  RenderInput input{};
-  input.view.m = {
-      camera.extrinsic[0], camera.extrinsic[1], camera.extrinsic[2], camera.extrinsic[3],
-      -camera.extrinsic[4], -camera.extrinsic[5], -camera.extrinsic[6], -camera.extrinsic[7],
-      camera.extrinsic[8], camera.extrinsic[9], camera.extrinsic[10], camera.extrinsic[11],
-      0.0f, 0.0f, 0.0f, 1.0f,
-  };
-  const Vec3 right{camera.extrinsic[0], camera.extrinsic[1], camera.extrinsic[2]};
-  const Vec3 down{camera.extrinsic[4], camera.extrinsic[5], camera.extrinsic[6]};
-  const Vec3 forward{camera.extrinsic[8], camera.extrinsic[9], camera.extrinsic[10]};
-  input.cameraPosition = right * (-camera.extrinsic[3]) + down * (-camera.extrinsic[7]) + forward * (-camera.extrinsic[11]);
+  const CameraRenderState cameraState = CameraRenderStateFromCameraParams(camera, options.nearPlane, options.farPlane);
 
-  const float fx = camera.intrinsic[0];
-  const float fy = camera.intrinsic[4];
-  const float cx = camera.intrinsic[2];
-  const float cy = camera.intrinsic[5];
-  const float width = static_cast<float>(camera.width);
-  const float height = static_cast<float>(camera.height);
-  const float zRange = options.farPlane - options.nearPlane;
-  input.proj.m = {
-      2.0f * fx / width, 0.0f, (2.0f * cx / width) - 1.0f, 0.0f,
-      0.0f, -2.0f * fy / height, 1.0f - (2.0f * cy / height), 0.0f,
-      0.0f, 0.0f, options.farPlane / zRange, -options.nearPlane * options.farPlane / zRange,
-      0.0f, 0.0f, 1.0f, 0.0f,
-  };
+  RenderInput input{};
+  input.view = cameraState.view;
+  input.proj = cameraState.proj;
+  input.cameraPosition = cameraState.position;
   input.viewportWidth = options.width;
   input.viewportHeight = options.height;
   input.nearPlane = options.nearPlane;

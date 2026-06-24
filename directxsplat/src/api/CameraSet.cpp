@@ -12,6 +12,10 @@ namespace {
 
 constexpr uint32_t kDefaultCameraWidth = 1600;
 constexpr uint32_t kDefaultCameraHeight = 900;
+constexpr uint32_t kMaxCameraDimension = 1u << 20u;
+constexpr float kCameraBasisEpsilon = 1e-5f;
+constexpr float kCameraOrthonormalTolerance = 0.05f;
+constexpr float kCameraPrincipalPointSlack = 4.0f;
 
 bool Finite(float v) {
   return std::isfinite(v);
@@ -23,6 +27,16 @@ bool Finite(const Vec3& v) {
 
 bool Finite(const Quat& q) {
   return Finite(q.x) && Finite(q.y) && Finite(q.z) && Finite(q.w);
+}
+
+template <size_t Count>
+bool Finite(const std::array<float, Count>& values) {
+  for (float value : values) {
+    if (!Finite(value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 Vec3 RotateVector(const Quat& q, const Vec3& v) {
@@ -103,6 +117,20 @@ std::array<float, 16> BuildOpenCvExtrinsic(const InputCamera& camera) {
   };
 }
 
+Vec3 CameraPositionFromExtrinsic(const std::array<float, 16>& e) {
+  const Vec3 right{e[0], e[1], e[2]};
+  const Vec3 down{e[4], e[5], e[6]};
+  const Vec3 forward{e[8], e[9], e[10]};
+  return right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
+}
+
+float FovYFromIntrinsics(const CameraParams& camera) {
+  if (camera.height == 0 || camera.intrinsic[4] <= 0.0f) {
+    return 1.0471975512f;
+  }
+  return 2.0f * std::atan(static_cast<float>(camera.height) * 0.5f / camera.intrinsic[4]);
+}
+
 std::array<float, 9> BuildIntrinsic(uint32_t width, uint32_t height, float fovYRadians) {
   const float safeFovY = std::clamp(fovYRadians, 0.001f, 3.13f);
   const float fy = static_cast<float>(height) * 0.5f / std::tan(safeFovY * 0.5f);
@@ -116,7 +144,86 @@ std::array<float, 9> BuildIntrinsic(uint32_t width, uint32_t height, float fovYR
   };
 }
 
+bool ValidCameraBasis(const std::array<float, 16>& e) {
+  const Vec3 right{e[0], e[1], e[2]};
+  const Vec3 down{e[4], e[5], e[6]};
+  const Vec3 forward{e[8], e[9], e[10]};
+  const float rightLen = Length(right);
+  const float downLen = Length(down);
+  const float forwardLen = Length(forward);
+  if (rightLen <= kCameraBasisEpsilon || downLen <= kCameraBasisEpsilon || forwardLen <= kCameraBasisEpsilon) {
+    return false;
+  }
+
+  const Vec3 rightN = right / rightLen;
+  const Vec3 downN = down / downLen;
+  const Vec3 forwardN = forward / forwardLen;
+  const float det = Dot(rightN, Cross(downN, forwardN));
+  return std::abs(Dot(rightN, downN)) <= kCameraOrthonormalTolerance &&
+         std::abs(Dot(rightN, forwardN)) <= kCameraOrthonormalTolerance &&
+         std::abs(Dot(downN, forwardN)) <= kCameraOrthonormalTolerance &&
+         std::abs(std::abs(det) - 1.0f) <= kCameraOrthonormalTolerance;
+}
+
 }  // namespace
+
+Status ValidateCameraParamsForRendering(const CameraParams& camera) {
+  if (camera.width == 0) {
+    return Status::Error("camera width must be greater than zero");
+  }
+  if (camera.height == 0) {
+    return Status::Error("camera height must be greater than zero");
+  }
+  if (camera.width > kMaxCameraDimension || camera.height > kMaxCameraDimension) {
+    return Status::Error("invalid camera dimensions");
+  }
+  if (!Finite(camera.extrinsic) || !Finite(camera.intrinsic)) {
+    return Status::Error("invalid camera matrix");
+  }
+  if (!ValidCameraBasis(camera.extrinsic) ||
+      std::abs(camera.extrinsic[12]) > kCameraBasisEpsilon ||
+      std::abs(camera.extrinsic[13]) > kCameraBasisEpsilon ||
+      std::abs(camera.extrinsic[14]) > kCameraBasisEpsilon ||
+      std::abs(camera.extrinsic[15] - 1.0f) > kCameraOrthonormalTolerance) {
+    return Status::Error("invalid camera extrinsic");
+  }
+
+  const float width = static_cast<float>(camera.width);
+  const float height = static_cast<float>(camera.height);
+  if (camera.intrinsic[0] <= kCameraBasisEpsilon || camera.intrinsic[4] <= kCameraBasisEpsilon ||
+      std::abs(camera.intrinsic[8]) <= kCameraBasisEpsilon ||
+      std::abs(camera.intrinsic[2]) > width * kCameraPrincipalPointSlack ||
+      std::abs(camera.intrinsic[5]) > height * kCameraPrincipalPointSlack) {
+    return Status::Error("invalid camera intrinsic");
+  }
+  return Status::Ok();
+}
+
+CameraRenderState CameraRenderStateFromCameraParams(const CameraParams& camera, float nearPlane, float farPlane) {
+  const float safeNear = Finite(nearPlane) ? std::max(nearPlane, 0.0001f) : 0.1f;
+  const float safeFar = Finite(farPlane) ? std::max(farPlane, safeNear + 0.001f) : 5000.0f;
+  const float zRange = safeFar - safeNear;
+  const float width = static_cast<float>(std::max(camera.width, 1u));
+  const float height = static_cast<float>(std::max(camera.height, 1u));
+  const auto& e = camera.extrinsic;
+
+  CameraRenderState out{};
+  out.view.m = {
+      e[0], e[1], e[2], e[3],
+      -e[4], -e[5], -e[6], -e[7],
+      e[8], e[9], e[10], e[11],
+      0.0f, 0.0f, 0.0f, 1.0f,
+  };
+  out.proj.m = {
+      2.0f * camera.intrinsic[0] / width, 0.0f, (2.0f * camera.intrinsic[2] / width) - 1.0f, 0.0f,
+      0.0f, -2.0f * camera.intrinsic[4] / height, 1.0f - (2.0f * camera.intrinsic[5] / height), 0.0f,
+      0.0f, 0.0f, safeFar / zRange, -safeNear * safeFar / zRange,
+      0.0f, 0.0f, 1.0f, 0.0f,
+  };
+  out.position = CameraPositionFromExtrinsic(camera.extrinsic);
+  out.fovYRadians = FovYFromIntrinsics(camera);
+  return out;
+}
 
 CameraParams CameraParamsFromInputCamera(const InputCamera& input, uint32_t width, uint32_t height) {
   CameraParams camera{};
@@ -137,21 +244,24 @@ CameraParams CameraParamsFromInputCamera(const InputCamera& input, uint32_t widt
 
 InputCamera InputCameraFromCameraParams(const CameraParams& camera, size_t index) {
   const auto& e = camera.extrinsic;
-  const Vec3 right = Normalize(Vec3{e[0], e[1], e[2]});
   const Vec3 down = Normalize(Vec3{e[4], e[5], e[6]});
   const Vec3 forward = Normalize(Vec3{e[8], e[9], e[10]});
   const Vec3 up = down * -1.0f;
+  Vec3 right = Normalize(Cross(up, forward));
+  Vec3 orthoUp = Normalize(Cross(forward, right));
+  if (!Finite(right) || Length(right) <= 1e-6f || !Finite(orthoUp) || Length(orthoUp) <= 1e-6f) {
+    right = Normalize(Vec3{e[0], e[1], e[2]});
+    orthoUp = up;
+  }
 
   InputCamera out{};
   out.name = camera.name.empty() ? "camera " + std::to_string(index) : camera.name;
-  if (Finite(right) && Finite(down) && Finite(forward) &&
-      Length(right) > 1e-6f && Length(down) > 1e-6f && Length(forward) > 1e-6f) {
-    out.position = right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
-    out.rotation = QuaternionFromBasis(right, up, forward);
+  if (Finite(right) && Finite(orthoUp) && Finite(forward) &&
+      Length(right) > 1e-6f && Length(orthoUp) > 1e-6f && Length(forward) > 1e-6f) {
+    out.position = CameraPositionFromExtrinsic(camera.extrinsic);
+    out.rotation = QuaternionFromBasis(right, orthoUp, forward);
   }
-  if (camera.height > 0 && camera.intrinsic[4] > 0.0f) {
-    out.fovYRadians = 2.0f * std::atan(static_cast<float>(camera.height) * 0.5f / camera.intrinsic[4]);
-  }
+  out.fovYRadians = FovYFromIntrinsics(camera);
   out.extrinsic.m = camera.extrinsic;
   out.intrinsic.m = camera.intrinsic;
   out.width = camera.width;

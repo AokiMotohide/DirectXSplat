@@ -32,6 +32,7 @@ constexpr uint64_t kFullResolutionSceneLimit = 2ull * 1024ull * 1024ull;
 constexpr uint32_t kHierarchyLeafGroupTarget = 8;
 constexpr float kHierarchyMidDescendRadius = 18.0f;
 constexpr float kHierarchyNearDescendRadius = 48.0f;
+constexpr float kMaxResidencyScreenRadius = 32768.0f;
 constexpr uint64_t kMaxResidencySceneGaussians = 64ull * 1024ull * 1024ull;
 constexpr uint64_t kMaxResidencyChunks = 1024ull * 1024ull;
 constexpr uint64_t kDefaultResidencyChunkExpandedBytes = 64ull * 1024ull * 1024ull;
@@ -61,6 +62,8 @@ bool Finite(float v) {
 bool Finite(const Vec3& v) {
   return Finite(v.x) && Finite(v.y) && Finite(v.z);
 }
+
+float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& input);
 
 Aabb MergeAabb(const Aabb& a, const Aabb& b) {
   if (!a.valid) {
@@ -374,29 +377,7 @@ float ScreenRadiusForChunk(const Aabb& bounds, const RenderInput& input) {
   }
   const Vec3 center = ComputeAabbCenter(bounds);
   const float radius = std::max(ComputeAabbRadius(bounds), 1e-3f);
-  const Vec4 center4{center.x, center.y, center.z, 1.0f};
-  const Vec4 view = Mul(input.view, center4);
-  const float viewDepth = view.z * (input.settings.positiveViewSpaceZ ? 1.0f : -1.0f);
-  const float nearPlane = std::max(input.nearPlane, 1e-4f);
-  if (!Finite(view.z) || viewDepth + radius <= nearPlane) {
-    return 0.0f;
-  }
-  const float focalX = std::abs(input.proj.m[0]) * static_cast<float>(std::max(input.viewportWidth, 1u)) * 0.5f;
-  const float focalY = std::abs(input.proj.m[5]) * static_cast<float>(std::max(input.viewportHeight, 1u)) * 0.5f;
-  const float focal = std::max(focalX, focalY);
-  const float screenRadius = radius * focal / std::max(viewDepth - radius, nearPlane);
-  const Vec4 clip = Mul(input.proj, view);
-  if (viewDepth > nearPlane && std::abs(clip.w) > 1e-6f) {
-    const float dilation = input.settings.fastCulling ? std::max(input.settings.frustumDilation, 0.0f) : 1.0f;
-    const float slackX = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportWidth, 1u)) + dilation;
-    const float slackY = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportHeight, 1u)) + dilation;
-    const float ndcX = clip.x / clip.w;
-    const float ndcY = clip.y / clip.w;
-    if (ndcX < -1.0f - slackX || ndcX > 1.0f + slackX || ndcY < -1.0f - slackY || ndcY > 1.0f + slackY) {
-      return 0.0f;
-    }
-  }
-  return screenRadius;
+  return ScreenRadiusForChunk(center, radius, input);
 }
 
 float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& input) {
@@ -408,15 +389,22 @@ float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& 
   const Vec4 view = Mul(input.view, center4);
   const float viewDepth = view.z * (input.settings.positiveViewSpaceZ ? 1.0f : -1.0f);
   const float nearPlane = std::max(input.nearPlane, 1e-4f);
-  if (!Finite(view.z) || viewDepth + radius <= nearPlane) {
+  if (!Finite(view.x) || !Finite(view.y) || !Finite(view.z) || !Finite(view.w) || viewDepth + radius <= nearPlane) {
     return 0.0f;
   }
   const float focalX = std::abs(input.proj.m[0]) * static_cast<float>(std::max(input.viewportWidth, 1u)) * 0.5f;
   const float focalY = std::abs(input.proj.m[5]) * static_cast<float>(std::max(input.viewportHeight, 1u)) * 0.5f;
   const float focal = std::max(focalX, focalY);
-  const float screenRadius = radius * focal / std::max(viewDepth - radius, nearPlane);
+  if (!Finite(focal) || focal <= 0.0f) {
+    return 0.0f;
+  }
+  const float screenRadiusRaw = radius * focal / std::max(viewDepth - radius, nearPlane);
+  if (!Finite(screenRadiusRaw)) {
+    return 0.0f;
+  }
+  const float screenRadius = std::min(screenRadiusRaw, kMaxResidencyScreenRadius);
   const Vec4 clip = Mul(input.proj, view);
-  if (viewDepth > nearPlane && std::abs(clip.w) > 1e-6f) {
+  if (viewDepth > nearPlane && Finite(clip.x) && Finite(clip.y) && Finite(clip.w) && std::abs(clip.w) > 1e-6f) {
     const float dilation = input.settings.fastCulling ? std::max(input.settings.frustumDilation, 0.0f) : 1.0f;
     const float slackX = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportWidth, 1u)) + dilation;
     const float slackY = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportHeight, 1u)) + dilation;

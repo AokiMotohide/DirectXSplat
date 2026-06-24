@@ -34,6 +34,12 @@ struct CameraState {
   float orbitDistance = 3.0f;
 };
 
+struct CameraMatrixOverride {
+  Mat4 view{};
+  Mat4 proj{};
+  Vec3 position{};
+};
+
 class CameraController {
  public:
   CameraController();
@@ -68,10 +74,13 @@ class CameraController {
 
  private:
   CameraState state_;
+  std::optional<CameraMatrixOverride> matrixOverride_;
   uint32_t viewportWidth_ = 1280;
   uint32_t viewportHeight_ = 720;
   float accelerationFactor_ = 1.0f;
 
+  void ClearMatrixOverride();
+  void SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up, float fovYRadians);
   void ClampPitch();
 };
 

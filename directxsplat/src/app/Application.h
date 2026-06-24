@@ -78,6 +78,7 @@ class Application {
   uint32_t renderHeightOverride_ = 0;
   bool vsyncEnabled_ = false;
   bool paused_ = false;
+  bool cameraCutPending_ = false;
   bool showMetrics_ = true;
   bool guiVisible_ = true;
   bool guiToggleWasDown_ = false;

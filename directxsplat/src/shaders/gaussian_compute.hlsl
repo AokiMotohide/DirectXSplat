@@ -58,6 +58,7 @@ RWByteAddressBuffer gVisibleCounter : register(u2);
 
 static const uint kProjectionThreadHistogramOffset = 8u;
 static const uint kProjectionThreadHistogramBins = 64u;
+static const uint kMaxDispatchDimension = 65535u;
 static const uint kFormatFloat32 = 0u;
 static const uint kFormatFloat16 = 1u;
 static const uint kFormatUint8 = 2u;
@@ -493,12 +494,16 @@ RWStructuredBuffer<uint> gSortMetaValues : register(u3);
 [numthreads(1, 1, 1)]
 void CSBuildSortMeta(uint3 tid : SV_DispatchThreadID) {
   uint pairCount = min(gSortMetaVisibleCounter.Load(0), gSortCapacity);
-  uint visibleCount = gSortMetaVisibleCounter.Load(4);
+  uint visibleCount = min(gSortMetaVisibleCounter.Load(4), gSortCapacity);
   uint sortCount = max(pairCount, 1u);
   uint visibleBlocks = (sortCount + (gSortGroupSize - 1u)) / max(gSortGroupSize, 1u);
-  uint oneSweepPartitions = (sortCount + (max(gOneSweepPartitionSize, 1u) - 1u)) / max(gOneSweepPartitionSize, 1u);
-  uint oneSweepGlobalHistPartitions = (sortCount + (max(gOneSweepGlobalHistPartitionSize, 1u) - 1u)) / max(gOneSweepGlobalHistPartitionSize, 1u);
-  uint packDispatchCount = (sortCount + (max(gPackGroupSize, 1u) - 1u)) / max(gPackGroupSize, 1u);
+  uint oneSweepPartitions = min((sortCount + (max(gOneSweepPartitionSize, 1u) - 1u)) / max(gOneSweepPartitionSize, 1u),
+                                kMaxDispatchDimension);
+  uint oneSweepGlobalHistPartitions = min((sortCount + (max(gOneSweepGlobalHistPartitionSize, 1u) - 1u)) /
+                                              max(gOneSweepGlobalHistPartitionSize, 1u),
+                                          kMaxDispatchDimension);
+  uint packDispatchCount = min((sortCount + (max(gPackGroupSize, 1u) - 1u)) / max(gPackGroupSize, 1u),
+                               kMaxDispatchDimension);
   if (pairCount == 0u) {
     gSortMetaKeys[0] = 0xFFFFFFFFu;
     gSortMetaValues[0] = 0u;
@@ -528,18 +533,18 @@ void StoreIndirectDispatchCommand(uint byteOffset, uint4 constants, uint3 dispat
 
 [numthreads(1, 1, 1)]
 void CSBuildOneSweepDispatchArgs(uint3 tid : SV_DispatchThreadID) {
-  const uint pairCount = gDispatchArgsSortMeta.Load(16);
+  const uint sortCount = gDispatchArgsSortMeta.Load(16);
   const uint partitions = gDispatchArgsSortMeta.Load(20);
   const uint globalHistPartitions = gDispatchArgsSortMeta.Load(24);
   const uint stride = 28u;
 
   StoreIndirectDispatchCommand(stride * 0u, uint4(0u, 0u, partitions, 0u), uint3(256u, 1u, 1u));
-  StoreIndirectDispatchCommand(stride * 1u, uint4(pairCount, 0u, globalHistPartitions, 0u), uint3(globalHistPartitions, 1u, 1u));
+  StoreIndirectDispatchCommand(stride * 1u, uint4(sortCount, 0u, globalHistPartitions, 0u), uint3(globalHistPartitions, 1u, 1u));
   StoreIndirectDispatchCommand(stride * 2u, uint4(0u, 0u, partitions, 0u), uint3(4u, 1u, 1u));
-  StoreIndirectDispatchCommand(stride * 3u, uint4(pairCount, 0u, partitions, 0u), uint3(partitions, 1u, 1u));
-  StoreIndirectDispatchCommand(stride * 4u, uint4(pairCount, 8u, partitions, 0u), uint3(partitions, 1u, 1u));
-  StoreIndirectDispatchCommand(stride * 5u, uint4(pairCount, 16u, partitions, 0u), uint3(partitions, 1u, 1u));
-  StoreIndirectDispatchCommand(stride * 6u, uint4(pairCount, 24u, partitions, 0u), uint3(partitions, 1u, 1u));
+  StoreIndirectDispatchCommand(stride * 3u, uint4(sortCount, 0u, partitions, 0u), uint3(partitions, 1u, 1u));
+  StoreIndirectDispatchCommand(stride * 4u, uint4(sortCount, 8u, partitions, 0u), uint3(partitions, 1u, 1u));
+  StoreIndirectDispatchCommand(stride * 5u, uint4(sortCount, 16u, partitions, 0u), uint3(partitions, 1u, 1u));
+  StoreIndirectDispatchCommand(stride * 6u, uint4(sortCount, 24u, partitions, 0u), uint3(partitions, 1u, 1u));
 }
 
 RWByteAddressBuffer gFinalizeVisibleCounter : register(u0);

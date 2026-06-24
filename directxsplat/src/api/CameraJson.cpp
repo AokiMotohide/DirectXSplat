@@ -19,7 +19,6 @@ namespace {
 constexpr uint32_t kDefaultCameraWidth = 1600;
 constexpr uint32_t kDefaultCameraHeight = 900;
 constexpr size_t kMaxCameraStringBytes = 4096;
-constexpr float kCameraBasisEpsilon = 1e-5f;
 
 using Json = nlohmann::json;
 
@@ -27,7 +26,8 @@ bool IsFinite(float v) {
   return std::isfinite(v);
 }
 
-bool IsFinite(const std::array<float, 16>& values) {
+template <size_t Count>
+bool IsFinite(const std::array<float, Count>& values) {
   for (float value : values) {
     if (!IsFinite(value)) {
       return false;
@@ -36,33 +36,11 @@ bool IsFinite(const std::array<float, 16>& values) {
   return true;
 }
 
-bool IsFinite(const std::array<float, 9>& values) {
-  for (float value : values) {
-    if (!IsFinite(value)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ValidCameraBasis(const std::array<float, 16>& e) {
-  const Vec3 right{e[0], e[1], e[2]};
-  const Vec3 down{e[4], e[5], e[6]};
-  const Vec3 forward{e[8], e[9], e[10]};
-  return Length(right) > kCameraBasisEpsilon &&
-         Length(down) > kCameraBasisEpsilon &&
-         Length(forward) > kCameraBasisEpsilon;
-}
-
-Status ValidateCameraParams(const CameraParams& camera) {
+Status ValidateLoadedCameraParams(const CameraParams& camera) {
   if (!IsFinite(camera.extrinsic) || !IsFinite(camera.intrinsic)) {
     return Status::Error("invalid camera matrix");
   }
-  if (!ValidCameraBasis(camera.extrinsic)) {
-    return Status::Error("invalid camera extrinsic");
-  }
-  if (camera.intrinsic[0] <= 0.0f || camera.intrinsic[4] <= 0.0f ||
-      std::abs(camera.intrinsic[8]) <= kCameraBasisEpsilon) {
+  if (camera.intrinsic[0] <= 0.0f || camera.intrinsic[4] <= 0.0f || std::abs(camera.intrinsic[8]) <= 1e-5f) {
     return Status::Error("invalid camera intrinsic");
   }
   return Status::Ok();
@@ -147,7 +125,7 @@ StatusOr<CameraParams> ParseMatrixCamera(const Json& item) {
   if (camera.width == 0 || camera.height == 0) {
     return StatusOr<CameraParams>::Error("invalid camera dimensions");
   }
-  Status validation = ValidateCameraParams(camera);
+  Status validation = ValidateLoadedCameraParams(camera);
   if (!validation.ok) {
     return StatusOr<CameraParams>::Error(validation.message);
   }

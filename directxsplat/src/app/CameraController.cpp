@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "api/CameraSetInternal.h"
+
 namespace dxsplat {
 
 namespace {
@@ -33,60 +35,6 @@ Quat QuaternionFromYawPitch(float yaw, float pitch) {
   });
 }
 
-Quat QuaternionFromBasis(const Vec3& right, const Vec3& up, const Vec3& forward) {
-  const float m00 = right.x;
-  const float m01 = up.x;
-  const float m02 = forward.x;
-  const float m10 = right.y;
-  const float m11 = up.y;
-  const float m12 = forward.y;
-  const float m20 = right.z;
-  const float m21 = up.z;
-  const float m22 = forward.z;
-
-  const float trace = m00 + m11 + m22;
-  Quat out{};
-  if (trace > 0.0f) {
-    const float s = std::sqrt(trace + 1.0f) * 2.0f;
-    if (!Finite(s) || std::abs(s) <= 1e-6f) {
-      return {};
-    }
-    out.w = 0.25f * s;
-    out.x = (m21 - m12) / s;
-    out.y = (m02 - m20) / s;
-    out.z = (m10 - m01) / s;
-  } else if (m00 > m11 && m00 > m22) {
-    const float s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
-    if (!Finite(s) || std::abs(s) <= 1e-6f) {
-      return {};
-    }
-    out.w = (m21 - m12) / s;
-    out.x = 0.25f * s;
-    out.y = (m01 + m10) / s;
-    out.z = (m02 + m20) / s;
-  } else if (m11 > m22) {
-    const float s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
-    if (!Finite(s) || std::abs(s) <= 1e-6f) {
-      return {};
-    }
-    out.w = (m02 - m20) / s;
-    out.x = (m01 + m10) / s;
-    out.y = 0.25f * s;
-    out.z = (m12 + m21) / s;
-  } else {
-    const float s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
-    if (!Finite(s) || std::abs(s) <= 1e-6f) {
-      return {};
-    }
-    out.w = (m10 - m01) / s;
-    out.x = (m02 + m20) / s;
-    out.y = (m12 + m21) / s;
-    out.z = 0.25f * s;
-  }
-  const Quat normalized = Normalize(out);
-  return Finite(normalized) ? normalized : Quat{};
-}
-
 Vec3 RotateVector(const Quat& q, const Vec3& v) {
   const Vec3 u{q.x, q.y, q.z};
   const float s = q.w;
@@ -97,12 +45,17 @@ Vec3 RotateVector(const Quat& q, const Vec3& v) {
 
 CameraController::CameraController() = default;
 
+void CameraController::ClearMatrixOverride() {
+  matrixOverride_.reset();
+}
+
 void CameraController::SetViewport(uint32_t width, uint32_t height) {
   viewportWidth_ = std::max(width, 1u);
   viewportHeight_ = std::max(height, 1u);
 }
 
 void CameraController::SetState(const CameraState& state) {
+  ClearMatrixOverride();
   state_ = state;
   if (!Finite(state_.position)) {
     state_.position = {};
@@ -156,6 +109,9 @@ void CameraController::UpdateFps(float dt, bool moveForward, bool moveBackward, 
   if (moveDown) delta = delta - u;
 
   const bool moving = Length(delta) > 0.0f;
+  if (rotationEnabled || moving) {
+    ClearMatrixOverride();
+  }
   if (state_.useAcceleration) {
     accelerationFactor_ = moving ? std::min(accelerationFactor_ * 1.02f, 50.0f) : 1.0f;
   } else {
@@ -173,7 +129,10 @@ void CameraController::UpdateFps(float dt, bool moveForward, bool moveBackward, 
 }
 
 void CameraController::UpdateOrbit(float, float orbitDeltaX, float orbitDeltaY, float panDeltaX, float panDeltaY,
-                                   float wheelDelta) {
+                                    float wheelDelta) {
+  if (orbitDeltaX != 0.0f || orbitDeltaY != 0.0f || panDeltaX != 0.0f || panDeltaY != 0.0f || wheelDelta != 0.0f) {
+    ClearMatrixOverride();
+  }
   state_.yaw += orbitDeltaX * 0.002f * state_.rotationSpeed;
   state_.pitch += orbitDeltaY * 0.002f * state_.rotationSpeed;
   ClampPitch();
@@ -187,7 +146,10 @@ void CameraController::UpdateOrbit(float, float orbitDeltaX, float orbitDeltaY, 
 }
 
 void CameraController::UpdateTrackball(float, float orbitDeltaX, float orbitDeltaY, float panDeltaX, float panDeltaY,
-                                       float wheelDelta) {
+                                        float wheelDelta) {
+  if (orbitDeltaX != 0.0f || orbitDeltaY != 0.0f || panDeltaX != 0.0f || panDeltaY != 0.0f || wheelDelta != 0.0f) {
+    ClearMatrixOverride();
+  }
   const Vec3 before = Normalize(state_.position - state_.orbitPivot);
   state_.yaw += orbitDeltaX * 0.002f * state_.rotationSpeed;
   state_.pitch += orbitDeltaY * 0.002f * state_.rotationSpeed;
@@ -220,6 +182,7 @@ void CameraController::FocusBounds(const Aabb& bounds) {
 }
 
 void CameraController::FocusPoint(const Vec3& point, float estimatedRadius) {
+  ClearMatrixOverride();
   const float radius = std::max(estimatedRadius, 0.01f);
   state_.orbitPivot = point;
   const float halfFovY = state_.fovYRadians * 0.5f;
@@ -236,6 +199,7 @@ void CameraController::FocusPoint(const Vec3& point, float estimatedRadius) {
 }
 
 void CameraController::SetOrbitPivot(const Vec3& pivot) {
+  ClearMatrixOverride();
   state_.orbitPivot = pivot;
   if (state_.navigatorMode == NavigatorMode::Trackball || state_.navigatorMode == NavigatorMode::Orbit ||
       state_.navigatorMode == NavigatorMode::Interpolation) {
@@ -244,6 +208,7 @@ void CameraController::SetOrbitPivot(const Vec3& pivot) {
 }
 
 void CameraController::SnapToInputCamera(const InputCamera& camera) {
+  ClearMatrixOverride();
   if (!Finite(camera.position) || !Finite(camera.rotation)) {
     return;
   }
@@ -256,46 +221,32 @@ void CameraController::SnapToInputCamera(const InputCamera& camera) {
   if (!Finite(f) || !Finite(inputUp) || Length(f) <= 1e-6f || Length(inputUp) <= 1e-6f) {
     return;
   }
-  state_.position = camera.position;
-  state_.yaw = std::atan2(f.x, f.z);
-  state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
-  const Vec3 baseForward = Forward();
-  const Vec3 baseRight = Normalize(Cross({0.0f, 1.0f, 0.0f}, baseForward));
-  const Vec3 baseUp = Normalize(Cross(baseForward, baseRight));
-  if (!Finite(baseRight) || !Finite(baseUp) || Length(baseRight) <= 1e-6f || Length(baseUp) <= 1e-6f) {
-    state_.roll = 0.0f;
-  } else {
-    state_.roll = std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp));
-  }
-  state_.fovYRadians = camera.fovYRadians;
-  if (!Finite(state_.fovYRadians)) {
-    state_.fovYRadians = 1.0471975512f;
-  }
-  state_.orbitPivot = state_.position + f * state_.orbitDistance;
-  SetState(state_);
+  SetPoseFromForwardUp(camera.position, f, inputUp, camera.fovYRadians);
 }
 
 void CameraController::SnapToCameraParams(const CameraParams& camera) {
-  const auto& e = camera.extrinsic;
-  const Vec3 right = Normalize(Vec3{e[0], e[1], e[2]});
-  const Vec3 down = Normalize(Vec3{e[4], e[5], e[6]});
-  const Vec3 forward = Normalize(Vec3{e[8], e[9], e[10]});
-  if (!Finite(right) || !Finite(down) || !Finite(forward) ||
-      Length(right) <= 1e-6f || Length(down) <= 1e-6f || Length(forward) <= 1e-6f) {
+  if (!ValidateCameraParamsForRendering(camera).ok) {
     return;
   }
 
-  InputCamera input{};
-  input.name = camera.name;
-  input.position = right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
-  input.rotation = QuaternionFromBasis(right, down * -1.0f, forward);
-  if (!Finite(input.position) || !Finite(input.rotation)) {
+  const CameraRenderState renderState = CameraRenderStateFromCameraParams(camera, state_.nearPlane, state_.farPlane);
+  const Vec3 forward = Normalize(Vec3{
+      renderState.view.m[8],
+      renderState.view.m[9],
+      renderState.view.m[10],
+  });
+  const Vec3 up = Normalize(Vec3{
+      renderState.view.m[4],
+      renderState.view.m[5],
+      renderState.view.m[6],
+  });
+  if (!Finite(renderState.position) || !Finite(forward) || !Finite(up) ||
+      Length(forward) <= 1e-6f || Length(up) <= 1e-6f) {
     return;
   }
-  if (camera.height > 0 && camera.intrinsic[4] > 0.0f) {
-    input.fovYRadians = 2.0f * std::atan(static_cast<float>(camera.height) * 0.5f / camera.intrinsic[4]);
-  }
-  SnapToInputCamera(input);
+
+  SetPoseFromForwardUp(renderState.position, forward, up, renderState.fovYRadians);
+  matrixOverride_ = CameraMatrixOverride{renderState.view, renderState.proj, renderState.position};
 }
 
 bool CameraController::SnapToClosestInputCamera(const std::vector<InputCamera>& cameras) {
@@ -318,7 +269,12 @@ bool CameraController::SnapToClosestInputCamera(const std::vector<InputCamera>& 
   return true;
 }
 
-Mat4 CameraController::ViewMatrix() const { return LookAt(state_.position, state_.position + Forward(), Up()); }
+Mat4 CameraController::ViewMatrix() const {
+  if (matrixOverride_.has_value()) {
+    return matrixOverride_->view;
+  }
+  return LookAt(state_.position, state_.position + Forward(), Up());
+}
 
 Mat4 CameraController::ProjectionMatrix() const {
   const float aspect = static_cast<float>(viewportWidth_) / static_cast<float>(viewportHeight_);
@@ -326,6 +282,9 @@ Mat4 CameraController::ProjectionMatrix() const {
 }
 
 Mat4 CameraController::ProjectionMatrixForAspect(float aspect) const {
+  if (matrixOverride_.has_value()) {
+    return matrixOverride_->proj;
+  }
   return Perspective(state_.fovYRadians, std::max(aspect, 0.01f), state_.nearPlane, state_.farPlane);
 }
 
@@ -361,6 +320,29 @@ Vec3 CameraController::ScreenToWorldRayDir(float ndcX, float ndcY) const {
   view.w = 0.0f;
   Vec4 world = Mul(invView, view);
   return Normalize(Vec3{world.x, world.y, world.z});
+}
+
+void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up, float fovYRadians) {
+  const Vec3 f = Normalize(forward);
+  const Vec3 inputUp = Normalize(up);
+  if (!Finite(position) || !Finite(f) || !Finite(inputUp) || Length(f) <= 1e-6f || Length(inputUp) <= 1e-6f) {
+    return;
+  }
+
+  state_.position = position;
+  state_.yaw = std::atan2(f.x, f.z);
+  state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
+  const Vec3 baseForward = Forward();
+  const Vec3 baseRight = Normalize(Cross({0.0f, 1.0f, 0.0f}, baseForward));
+  const Vec3 baseUp = Normalize(Cross(baseForward, baseRight));
+  if (!Finite(baseRight) || !Finite(baseUp) || Length(baseRight) <= 1e-6f || Length(baseUp) <= 1e-6f) {
+    state_.roll = 0.0f;
+  } else {
+    state_.roll = std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp));
+  }
+  state_.fovYRadians = Finite(fovYRadians) ? fovYRadians : 1.0471975512f;
+  state_.orbitPivot = state_.position + f * state_.orbitDistance;
+  SetState(state_);
 }
 
 void CameraController::ClampPitch() { state_.pitch = std::clamp(state_.pitch, -1.55334f, 1.55334f); }
