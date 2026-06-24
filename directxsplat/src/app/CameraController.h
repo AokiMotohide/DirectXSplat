@@ -18,12 +18,14 @@ enum class NavigatorMode {
   None,
 };
 
+inline constexpr float kDefaultCameraFovYRadians = 1.0471975512f;
+
 struct CameraState {
   Vec3 position{0.0f, 0.0f, -3.0f};
   float yaw = 0.0f;
   float pitch = 0.0f;
   float roll = 0.0f;
-  float fovYRadians = 1.0471975512f;
+  float fovYRadians = kDefaultCameraFovYRadians;
   float nearPlane = 0.1f;
   float farPlane = 5000.0f;
   float movementSpeed = 2.5f;
@@ -81,7 +83,7 @@ class CameraController {
   float accelerationFactor_ = 1.0f;
 
   void ClearMatrixOverride();
-  void SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up, float fovYRadians);
+  void SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up);
   void ClampPitch();
 };
 

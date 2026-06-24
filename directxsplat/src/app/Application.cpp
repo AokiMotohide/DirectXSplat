@@ -701,6 +701,7 @@ void Application::UpdateAnimation(float dt) {
   }
 
   const CameraState current = camera_.State();
+  evaluated.fovYRadians = kDefaultCameraFovYRadians;
   evaluated.nearPlane = current.nearPlane;
   evaluated.farPlane = current.farPlane;
   evaluated.movementSpeed = current.movementSpeed;

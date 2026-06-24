@@ -143,8 +143,6 @@ CameraState CameraPathAnimator::CameraStateFromPose(const Pose& pose) {
   out.yaw = WrapAngle(std::atan2(forward.x, forward.z));
   out.pitch = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
   out.roll = WrapAngle(std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp)));
-  out.fovYRadians = Finite(pose.fovYRadians) ? std::clamp(pose.fovYRadians, 0.017453292f, 3.12413936f)
-                                             : 1.0471975512f;
   out.orbitPivot = out.position + forward * out.orbitDistance;
   return out;
 }
@@ -176,7 +174,7 @@ void CameraPathAnimator::SetCameras(const CameraSet& cameras) {
     if (!Finite(input.position) || !Finite(input.rotation)) {
       continue;
     }
-    poses_.push_back({input.position, SafeNormalize(input.rotation), input.fovYRadians});
+    poses_.push_back({input.position, SafeNormalize(input.rotation)});
   }
 
   time_ = WrapTime(time_, poses_.size());
@@ -223,7 +221,6 @@ bool CameraPathAnimator::Evaluate(CameraState& outState) const {
   Pose pose{};
   pose.position = CatmullRom(poses_[i0].position, poses_[i1].position, poses_[i2].position, poses_[i3].position, u);
   pose.orientation = Slerp(poses_[i1].orientation, poses_[i2].orientation, u);
-  pose.fovYRadians = poses_[i1].fovYRadians + (poses_[i2].fovYRadians - poses_[i1].fovYRadians) * u;
   outState = CameraStateFromPose(pose);
   return Finite(outState.position) && Finite(outState.yaw) && Finite(outState.pitch) && Finite(outState.roll) &&
          Finite(outState.fovYRadians);

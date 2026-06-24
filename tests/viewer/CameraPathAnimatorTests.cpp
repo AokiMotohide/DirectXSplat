@@ -88,3 +88,17 @@ TEST_CASE("Interpolated pose is finite") {
     CHECK(Finite(state));
   }
 }
+
+TEST_CASE("Camera snap uses default viewer fov") {
+  dxsplat::CameraController controller;
+  dxsplat::CameraState state = controller.State();
+  state.fovYRadians = 0.75f;
+  controller.SetState(state);
+
+  controller.SnapToCameraParams(MakeCamera(1.0f, 2.0f, 3.0f));
+
+  CHECK(controller.State().position.x == doctest::Approx(1.0f));
+  CHECK(controller.State().position.y == doctest::Approx(2.0f));
+  CHECK(controller.State().position.z == doctest::Approx(3.0f));
+  CHECK(controller.State().fovYRadians == doctest::Approx(dxsplat::kDefaultCameraFovYRadians));
+}

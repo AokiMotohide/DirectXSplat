@@ -29,7 +29,6 @@ class CameraPathAnimator {
   struct Pose {
     Vec3 position{};
     Quat orientation{};
-    float fovYRadians = 1.0471975512f;
   };
 
   static CameraState CameraStateFromPose(const Pose& pose);

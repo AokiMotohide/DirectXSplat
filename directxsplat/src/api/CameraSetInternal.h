@@ -13,7 +13,6 @@ struct CameraRenderState {
   Mat4 view{};
   Mat4 proj{};
   Vec3 position{};
-  float fovYRadians = 1.0471975512f;
 };
 
 Status ValidateCameraParamsForRendering(const CameraParams& camera);

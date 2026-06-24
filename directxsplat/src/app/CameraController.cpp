@@ -110,7 +110,8 @@ void CameraController::SetState(const CameraState& state) {
   if (state_.navigatorMode == NavigatorMode::Trackball) {
     state_.navigatorMode = NavigatorMode::Orbit;
   }
-  state_.fovYRadians = Finite(state_.fovYRadians) ? std::clamp(state_.fovYRadians, 0.017453292f, 3.12413936f) : 1.0471975512f;
+  state_.fovYRadians = Finite(state_.fovYRadians) ? std::clamp(state_.fovYRadians, 0.017453292f, 3.12413936f)
+                                                   : kDefaultCameraFovYRadians;
   state_.nearPlane = Finite(state_.nearPlane) ? std::max(state_.nearPlane, 0.0001f) : 0.1f;
   state_.farPlane = Finite(state_.farPlane) ? std::max(state_.farPlane, state_.nearPlane + 0.001f) : 5000.0f;
   state_.movementSpeed = Finite(state_.movementSpeed) ? std::max(state_.movementSpeed, 0.0f) : 2.5f;
@@ -281,7 +282,7 @@ void CameraController::SnapToInputCamera(const InputCamera& camera) {
   if (!Finite(f) || !Finite(inputUp) || Length(f) <= 1e-6f || Length(inputUp) <= 1e-6f) {
     return;
   }
-  SetPoseFromForwardUp(camera.position, f, inputUp, camera.fovYRadians);
+  SetPoseFromForwardUp(camera.position, f, inputUp);
 }
 
 void CameraController::SnapToCameraParams(const CameraParams& camera) {
@@ -305,8 +306,7 @@ void CameraController::SnapToCameraParams(const CameraParams& camera) {
     return;
   }
 
-  SetPoseFromForwardUp(renderState.position, forward, up, renderState.fovYRadians);
-  matrixOverride_ = CameraMatrixOverride{renderState.view, renderState.proj, renderState.position};
+  SetPoseFromForwardUp(renderState.position, forward, up);
 }
 
 bool CameraController::SnapToClosestInputCamera(const std::vector<InputCamera>& cameras) {
@@ -382,7 +382,7 @@ Vec3 CameraController::ScreenToWorldRayDir(float ndcX, float ndcY) const {
   return SafeNormalize(Vec3{world.x, world.y, world.z}, Forward());
 }
 
-void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up, float fovYRadians) {
+void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up) {
   if (!Finite(position) || !Finite(forward) || !Finite(up) || Length(forward) <= 1e-6f || Length(up) <= 1e-6f) {
     return;
   }
@@ -396,7 +396,7 @@ void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& fo
   Vec3 baseUp{};
   BuildViewBasis(Forward(), 0.0f, baseRight, baseUp);
   state_.roll = WrapAngle(std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp)));
-  state_.fovYRadians = Finite(fovYRadians) ? fovYRadians : 1.0471975512f;
+  state_.fovYRadians = kDefaultCameraFovYRadians;
   state_.orbitPivot = state_.position + f * state_.orbitDistance;
   SetState(state_);
 }

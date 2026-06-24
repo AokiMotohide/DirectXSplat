@@ -221,7 +221,6 @@ CameraRenderState CameraRenderStateFromCameraParams(const CameraParams& camera, 
       0.0f, 0.0f, 1.0f, 0.0f,
   };
   out.position = CameraPositionFromExtrinsic(camera.extrinsic);
-  out.fovYRadians = FovYFromIntrinsics(camera);
   return out;
 }
 
