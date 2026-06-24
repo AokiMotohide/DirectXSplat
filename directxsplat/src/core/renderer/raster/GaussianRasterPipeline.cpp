@@ -41,6 +41,8 @@ constexpr uint32_t kProjectionActiveThreadBins = 64u;
 constexpr uint32_t kProjectionActiveThreadHistogramOffset = 8u;
 constexpr uint32_t kProjectionActiveThreadHistogramBytes = kProjectionActiveThreadBins * sizeof(uint32_t);
 constexpr uint32_t kVisibleCounterBytes = kProjectionActiveThreadHistogramOffset + kProjectionActiveThreadHistogramBytes;
+constexpr uint32_t kMaxD3D12DispatchDimension = 65535u;
+constexpr float kMaxRenderAxisPixels = 1024.0f;
 constexpr size_t kRenderScratchRetiredResourceSlots = 16;
 constexpr DWORD kFenceWaitPollMs = 50;
 
@@ -76,6 +78,10 @@ bool IsFinite(const Vec3& v) {
 
 bool IsFinite(const Quat& q) {
   return IsFinite(q.x) && IsFinite(q.y) && IsFinite(q.z) && IsFinite(q.w);
+}
+
+float ClampFinite(float value, float minValue, float maxValue, float fallback) {
+  return IsFinite(value) ? std::clamp(value, minValue, maxValue) : fallback;
 }
 
 Aabb BoundsFromGaussians(const std::vector<Gaussian>& gaussians) {
@@ -2573,7 +2579,7 @@ Status GaussianRasterPipeline::InvokeHook(const std::function<void(const RenderH
                                           UploadedSceneHandle sceneHandle,
                                           const RenderInput& input,
                                           const RenderTargetBinding& target,
-                                          const GpuFrameResources& resources,
+                                          GpuFrameResources& resources,
                                           FrameStats& stats) const {
   if (!hook) {
     return Status::Ok();
@@ -2743,7 +2749,7 @@ Status GaussianRasterPipeline::GetChunkGpuResources(uint64_t sceneId,
   out.decodeExtent[2] = chunkIt->params.decodeExtent[2];
   out.visible = chunkIt->params.visible != 0u;
   out.gaussianData = MakeBufferView(runtime->sceneAtlasBuffer.Get(),
-                                    D3D12_RESOURCE_STATE_COMMON,
+                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                     static_cast<uint64_t>(chunkIt->gaussianOffset) * runtime->sceneGaussianStride,
                                     static_cast<uint64_t>(chunkIt->gaussianCount) * runtime->sceneGaussianStride,
                                     runtime->sceneGaussianStride,
@@ -2813,7 +2819,7 @@ Status GaussianRasterPipeline::GetSceneGpuResources(uint64_t sceneId,
     chunkResources.decodeExtent[2] = chunk.params.decodeExtent[2];
     chunkResources.visible = chunk.params.visible != 0u;
     chunkResources.gaussianData = MakeBufferView(runtime->sceneAtlasBuffer.Get(),
-                                                 D3D12_RESOURCE_STATE_COMMON,
+                                                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                                  static_cast<uint64_t>(chunk.gaussianOffset) * runtime->sceneGaussianStride,
                                                  static_cast<uint64_t>(chunk.gaussianCount) * runtime->sceneGaussianStride,
                                                  runtime->sceneGaussianStride,
@@ -3148,11 +3154,39 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     PopulateFrameResources(target, runtime, *scratch, currentColorState, currentDepthState, currentMotionState, frameResources);
   };
   refreshFrameResources();
+  auto applyBufferState = [](const GpuBufferView& view, ID3D12Resource* resource, D3D12_RESOURCE_STATES& state) {
+    if (view.resource == resource) {
+      state = view.state;
+    }
+  };
+  auto applyFrameResourceStates = [&]() {
+    if (frameResources.colorTarget.resource == target.colorTarget) {
+      currentColorState = frameResources.colorTarget.state;
+    }
+    if (frameResources.depthTarget.resource == target.depthTarget) {
+      currentDepthState = frameResources.depthTarget.state;
+    }
+    if (frameResources.motionVectorsTarget.resource == target.motionVectorsTarget) {
+      currentMotionState = frameResources.motionVectorsTarget.state;
+    }
+    applyBufferState(frameResources.sortedSceneIndices, scratch->sortValuesBuffer.Get(), scratch->sortValuesState);
+    applyBufferState(frameResources.sortedSceneIndices, scratch->sortValuesTempBuffer.Get(), scratch->sortValuesTempState);
+    applyBufferState(frameResources.secondarySortedSceneIndices, scratch->sortValuesBuffer.Get(), scratch->sortValuesState);
+    applyBufferState(frameResources.secondarySortedSceneIndices, scratch->sortValuesTempBuffer.Get(), scratch->sortValuesTempState);
+    applyBufferState(frameResources.visibleCounter, scratch->visibleCounterBuffer.Get(), scratch->visibleCounterState);
+    applyBufferState(frameResources.projectionActiveThreads, scratch->visibleCounterBuffer.Get(), scratch->visibleCounterState);
+    applyBufferState(frameResources.drawArgs, scratch->drawArgsBuffer.Get(), scratch->drawArgsState);
+    applyBufferState(frameResources.sortMeta, scratch->sortMetaBuffer.Get(), scratch->sortMetaState);
+  };
   const bool writeDepth =
       input.settings.outputDepth && target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
 
   auto invokeStage = [&](const std::function<void(const RenderHookContext&)>& hook, RenderHookStage stage) {
-    return InvokeHook(hook, stage, commandList, publicSceneHandle, input, target, frameResources, stats);
+    Status hookStatus = InvokeHook(hook, stage, commandList, publicSceneHandle, input, target, frameResources, stats);
+    if (hookStatus.ok) {
+      applyFrameResourceStates();
+    }
+    return hookStatus;
   };
   auto writeTimestamp = [&](uint32_t index) {
     if (scratch->timestampQueryHeap != nullptr) {
@@ -3393,12 +3427,12 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.cameraPos[0] = input.cameraPosition.x;
   prepBase.cameraPos[1] = input.cameraPosition.y;
   prepBase.cameraPos[2] = input.cameraPosition.z;
-  prepBase.globalScale = std::max(0.01f, input.settings.gaussianScalingModifier);
+  prepBase.globalScale = ClampFinite(input.settings.gaussianScalingModifier, 0.01f, 1024.0f, 1.0f);
   prepBase.focalX = std::abs(input.proj.m[0]) * static_cast<float>(input.viewportWidth) * 0.5f;
   prepBase.focalY = std::abs(input.proj.m[5]) * static_cast<float>(input.viewportHeight) * 0.5f;
   prepBase.ndcX = 2.0f / std::max(1.0f, static_cast<float>(input.viewportWidth));
   prepBase.ndcY = 2.0f / std::max(1.0f, static_cast<float>(input.viewportHeight));
-  prepBase.maxAxisPixels = std::max(1.0f, input.settings.maxAxisPixels);
+  prepBase.maxAxisPixels = ClampFinite(input.settings.maxAxisPixels, 1.0f, kMaxRenderAxisPixels, 256.0f);
   prepBase.nearPlane = std::max(0.0001f, input.nearPlane);
   prepBase.fastCulling = input.settings.fastCulling ? 1u : 0u;
   const RenderType renderType = SanitizeRenderType(input.settings.renderType);
@@ -3408,7 +3442,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
       renderType == RenderType::Color ? SanitizeShadingDegree(input.settings.shadingDegree) : ShadingDegree::Dc;
   prepBase.shadingDegree = static_cast<uint32_t>(shadingDegree);
   prepBase.positiveViewSpaceZ = input.settings.positiveViewSpaceZ ? 1u : 0u;
-  prepBase.antialiasingStrength = std::max(0.0f, input.settings.antialiasingStrength);
+  prepBase.antialiasingStrength = ClampFinite(input.settings.antialiasingStrength, 0.0f, 64.0f, 1.0f);
   prepBase.gammaCorrection = renderType == RenderType::Color && input.settings.gammaCorrection ? 1u : 0u;
   prepBase.drawCapacity = runtime.drawCapacity;
   prepBase.pairCapacity = scratch->sortPairCapacity;
@@ -3418,7 +3452,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.backgroundColor[1] = input.settings.backgroundColor.y;
   prepBase.backgroundColor[2] = input.settings.backgroundColor.z;
   prepBase.farPlane = std::max(input.farPlane, input.nearPlane + 0.001f);
-  prepBase.frustumDilation = std::clamp(input.settings.frustumDilation, 0.0f, 1.0f);
+  prepBase.frustumDilation = ClampFinite(input.settings.frustumDilation, 0.0f, 1.0f, 0.05f);
   prepBase.sceneGaussianStride = runtime.sceneGaussianStride;
   prepBase.rgbaFormat = static_cast<uint32_t>(runtime.vramFormat.rgbaFormat);
   prepBase.shFormat = static_cast<uint32_t>(runtime.vramFormat.shFormat);
@@ -3428,6 +3462,10 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.sceneCount = runtime.sceneAtlasTail;
   prepBase.paddedCount = runtime.maxPrepareGroups;
   prepBase.setCount = runtime.batchedChunkCount;
+  if (runtime.maxPrepareGroups > kMaxD3D12DispatchDimension ||
+      runtime.batchedChunkCount > kMaxD3D12DispatchDimension) {
+    return finish(Status::Error("prepare dispatch dimension exceeds D3D12 limit"));
+  }
 
   if (scratch->prepConstantsMapped == nullptr || scratch->prepConstantsUpload == nullptr || runtime.sceneAtlasBuffer == nullptr ||
       runtime.batchedChunkParamsUpload == nullptr || runtime.sceneIndexToChunkBuffer == nullptr) {
@@ -3468,8 +3506,12 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
 
   D3D12_RESOURCE_BARRIER barrier{};
   barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-  barrier.UAV.pResource = scratch->visibleCounterBuffer.Get();
-  commandList->ResourceBarrier(1, &barrier);
+  D3D12_RESOURCE_BARRIER resetBarriers[2]{};
+  resetBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+  resetBarriers[0].UAV.pResource = scratch->visibleCounterBuffer.Get();
+  resetBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+  resetBarriers[1].UAV.pResource = scratch->drawArgsBuffer.Get();
+  commandList->ResourceBarrier(2, resetBarriers);
 
   commandList->SetComputeRootSignature(prepRootSignature_.Get());
   commandList->SetPipelineState(prepPso_.Get());

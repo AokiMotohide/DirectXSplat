@@ -7,6 +7,18 @@ namespace dxsplat {
 
 namespace {
 
+bool Finite(float v) {
+  return std::isfinite(v);
+}
+
+bool Finite(const Vec3& v) {
+  return Finite(v.x) && Finite(v.y) && Finite(v.z);
+}
+
+bool Finite(const Quat& q) {
+  return Finite(q.x) && Finite(q.y) && Finite(q.z) && Finite(q.w);
+}
+
 Quat QuaternionFromYawPitch(float yaw, float pitch) {
   const float cy = std::cos(yaw * 0.5f);
   const float sy = std::sin(yaw * 0.5f);
@@ -36,30 +48,43 @@ Quat QuaternionFromBasis(const Vec3& right, const Vec3& up, const Vec3& forward)
   Quat out{};
   if (trace > 0.0f) {
     const float s = std::sqrt(trace + 1.0f) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = 0.25f * s;
     out.x = (m21 - m12) / s;
     out.y = (m02 - m20) / s;
     out.z = (m10 - m01) / s;
   } else if (m00 > m11 && m00 > m22) {
     const float s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = (m21 - m12) / s;
     out.x = 0.25f * s;
     out.y = (m01 + m10) / s;
     out.z = (m02 + m20) / s;
   } else if (m11 > m22) {
     const float s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = (m02 - m20) / s;
     out.x = (m01 + m10) / s;
     out.y = 0.25f * s;
     out.z = (m12 + m21) / s;
   } else {
     const float s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = (m10 - m01) / s;
     out.x = (m02 + m20) / s;
     out.y = (m12 + m21) / s;
     out.z = 0.25f * s;
   }
-  return Normalize(out);
+  const Quat normalized = Normalize(out);
+  return Finite(normalized) ? normalized : Quat{};
 }
 
 Vec3 RotateVector(const Quat& q, const Vec3& v) {
@@ -79,14 +104,30 @@ void CameraController::SetViewport(uint32_t width, uint32_t height) {
 
 void CameraController::SetState(const CameraState& state) {
   state_ = state;
+  if (!Finite(state_.position)) {
+    state_.position = {};
+  }
+  if (!Finite(state_.yaw)) {
+    state_.yaw = 0.0f;
+  }
+  if (!Finite(state_.pitch)) {
+    state_.pitch = 0.0f;
+  }
+  if (!Finite(state_.roll)) {
+    state_.roll = 0.0f;
+  }
   if (state_.navigatorMode == NavigatorMode::Trackball) {
     state_.navigatorMode = NavigatorMode::Orbit;
   }
-  state_.fovYRadians = std::clamp(state_.fovYRadians, 0.017453292f, 3.12413936f);
-  state_.nearPlane = std::max(state_.nearPlane, 0.0001f);
-  state_.farPlane = std::max(state_.farPlane, state_.nearPlane + 0.001f);
-  state_.movementSpeed = std::max(state_.movementSpeed, 0.0f);
-  state_.rotationSpeed = std::max(state_.rotationSpeed, 0.0f);
+  state_.fovYRadians = Finite(state_.fovYRadians) ? std::clamp(state_.fovYRadians, 0.017453292f, 3.12413936f) : 1.0471975512f;
+  state_.nearPlane = Finite(state_.nearPlane) ? std::max(state_.nearPlane, 0.0001f) : 0.1f;
+  state_.farPlane = Finite(state_.farPlane) ? std::max(state_.farPlane, state_.nearPlane + 0.001f) : 5000.0f;
+  state_.movementSpeed = Finite(state_.movementSpeed) ? std::max(state_.movementSpeed, 0.0f) : 2.5f;
+  state_.rotationSpeed = Finite(state_.rotationSpeed) ? std::max(state_.rotationSpeed, 0.0f) : 1.0f;
+  if (!Finite(state_.orbitPivot)) {
+    state_.orbitPivot = {};
+  }
+  state_.orbitDistance = Finite(state_.orbitDistance) ? std::max(state_.orbitDistance, 0.01f) : 3.0f;
   ClampPitch();
 }
 
@@ -203,18 +244,35 @@ void CameraController::SetOrbitPivot(const Vec3& pivot) {
 }
 
 void CameraController::SnapToInputCamera(const InputCamera& camera) {
-  state_.position = camera.position;
+  if (!Finite(camera.position) || !Finite(camera.rotation)) {
+    return;
+  }
   const Quat q = Normalize(camera.rotation);
+  if (!Finite(q) || (q.x == 0.0f && q.y == 0.0f && q.z == 0.0f && q.w == 0.0f)) {
+    return;
+  }
   const Vec3 f = RotateVector(q, {0.0f, 0.0f, 1.0f});
   const Vec3 inputUp = Normalize(RotateVector(q, {0.0f, 1.0f, 0.0f}));
+  if (!Finite(f) || !Finite(inputUp) || Length(f) <= 1e-6f || Length(inputUp) <= 1e-6f) {
+    return;
+  }
+  state_.position = camera.position;
   state_.yaw = std::atan2(f.x, f.z);
   state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
   const Vec3 baseForward = Forward();
   const Vec3 baseRight = Normalize(Cross({0.0f, 1.0f, 0.0f}, baseForward));
   const Vec3 baseUp = Normalize(Cross(baseForward, baseRight));
-  state_.roll = std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp));
+  if (!Finite(baseRight) || !Finite(baseUp) || Length(baseRight) <= 1e-6f || Length(baseUp) <= 1e-6f) {
+    state_.roll = 0.0f;
+  } else {
+    state_.roll = std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp));
+  }
   state_.fovYRadians = camera.fovYRadians;
+  if (!Finite(state_.fovYRadians)) {
+    state_.fovYRadians = 1.0471975512f;
+  }
   state_.orbitPivot = state_.position + f * state_.orbitDistance;
+  SetState(state_);
 }
 
 void CameraController::SnapToCameraParams(const CameraParams& camera) {
@@ -222,11 +280,18 @@ void CameraController::SnapToCameraParams(const CameraParams& camera) {
   const Vec3 right = Normalize(Vec3{e[0], e[1], e[2]});
   const Vec3 down = Normalize(Vec3{e[4], e[5], e[6]});
   const Vec3 forward = Normalize(Vec3{e[8], e[9], e[10]});
+  if (!Finite(right) || !Finite(down) || !Finite(forward) ||
+      Length(right) <= 1e-6f || Length(down) <= 1e-6f || Length(forward) <= 1e-6f) {
+    return;
+  }
 
   InputCamera input{};
   input.name = camera.name;
   input.position = right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
   input.rotation = QuaternionFromBasis(right, down * -1.0f, forward);
+  if (!Finite(input.position) || !Finite(input.rotation)) {
+    return;
+  }
   if (camera.height > 0 && camera.intrinsic[4] > 0.0f) {
     input.fovYRadians = 2.0f * std::atan(static_cast<float>(camera.height) * 0.5f / camera.intrinsic[4]);
   }

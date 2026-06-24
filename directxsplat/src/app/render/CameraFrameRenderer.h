@@ -38,6 +38,7 @@ class CameraFrameRenderer {
                 D3D12_CPU_DESCRIPTOR_HANDLE colorRtv,
                 D3D12_VIEWPORT viewport,
                 D3D12_RECT scissor,
+                uint32_t frameSlot,
                 const Mat4& view,
                 const Mat4& projection,
                 const CameraSet& cameras,
@@ -49,31 +50,37 @@ class CameraFrameRenderer {
     float color[3]{};
   };
 
+  struct FrameBuffers {
+    Microsoft::WRL::ComPtr<ID3D12Resource> vertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> indexBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> instanceBuffer;
+    void* mappedVertices = nullptr;
+    void* mappedIndices = nullptr;
+    void* mappedInstances = nullptr;
+    size_t vertexCapacityBytes = 0;
+    size_t indexCapacityBytes = 0;
+    size_t instanceCapacityBytes = 0;
+    size_t cachedCameraCount = 0;
+    float cachedFrameSize = -1.0f;
+    bool staticGeometryDirty = true;
+    bool instancesDirty = true;
+  };
+
   Status CreatePipeline();
-  Status EnsureStaticGeometry();
-  Status UpdateInstances(const CameraSet& cameras, float frameSize);
+  Status EnsureStaticGeometry(FrameBuffers& frame);
+  Status UpdateInstances(FrameBuffers& frame, const CameraSet& cameras, float frameSize);
   Status EnsureUploadBuffer(size_t bytes,
                             Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
                             void*& mapped,
                             size_t& capacity);
+  void ReleaseFrameBuffers(FrameBuffers& frame);
   void ReleaseUploadBuffer(Microsoft::WRL::ComPtr<ID3D12Resource>& resource, void*& mapped, size_t& capacity);
 
   ID3D12Device* device_ = nullptr;
   DXGI_FORMAT colorFormat_ = DXGI_FORMAT_R8G8B8A8_UNORM;
   Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_;
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> vertexBuffer_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> indexBuffer_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> instanceBuffer_;
-  void* mappedVertices_ = nullptr;
-  void* mappedIndices_ = nullptr;
-  void* mappedInstances_ = nullptr;
-  size_t vertexCapacityBytes_ = 0;
-  size_t indexCapacityBytes_ = 0;
-  size_t instanceCapacityBytes_ = 0;
-  size_t cachedCameraCount_ = 0;
-  float cachedFrameSize_ = -1.0f;
-  bool instancesDirty_ = true;
+  std::array<FrameBuffers, 2> frames_{};
 };
 
 }  // namespace dxsplat

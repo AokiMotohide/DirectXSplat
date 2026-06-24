@@ -13,6 +13,18 @@ namespace {
 constexpr uint32_t kDefaultCameraWidth = 1600;
 constexpr uint32_t kDefaultCameraHeight = 900;
 
+bool Finite(float v) {
+  return std::isfinite(v);
+}
+
+bool Finite(const Vec3& v) {
+  return Finite(v.x) && Finite(v.y) && Finite(v.z);
+}
+
+bool Finite(const Quat& q) {
+  return Finite(q.x) && Finite(q.y) && Finite(q.z) && Finite(q.w);
+}
+
 Vec3 RotateVector(const Quat& q, const Vec3& v) {
   const Vec3 u{q.x, q.y, q.z};
   const float s = q.w;
@@ -34,34 +46,50 @@ Quat QuaternionFromBasis(const Vec3& right, const Vec3& up, const Vec3& forward)
   Quat out{};
   if (trace > 0.0f) {
     const float s = std::sqrt(trace + 1.0f) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = 0.25f * s;
     out.x = (m21 - m12) / s;
     out.y = (m02 - m20) / s;
     out.z = (m10 - m01) / s;
   } else if (m00 > m11 && m00 > m22) {
     const float s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = (m21 - m12) / s;
     out.x = 0.25f * s;
     out.y = (m01 + m10) / s;
     out.z = (m02 + m20) / s;
   } else if (m11 > m22) {
     const float s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = (m02 - m20) / s;
     out.x = (m01 + m10) / s;
     out.y = 0.25f * s;
     out.z = (m12 + m21) / s;
   } else {
     const float s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
+    if (!Finite(s) || std::abs(s) <= 1e-6f) {
+      return {};
+    }
     out.w = (m10 - m01) / s;
     out.x = (m02 + m20) / s;
     out.y = (m12 + m21) / s;
     out.z = 0.25f * s;
   }
-  return Normalize(out);
+  const Quat normalized = Normalize(out);
+  return Finite(normalized) ? normalized : Quat{};
 }
 
 std::array<float, 16> BuildOpenCvExtrinsic(const InputCamera& camera) {
-  const Quat q = Normalize(camera.rotation);
+  Quat q = Normalize(camera.rotation);
+  if (!Finite(q) || (q.x == 0.0f && q.y == 0.0f && q.z == 0.0f && q.w == 0.0f)) {
+    q = {};
+  }
   const Vec3 right = RotateVector(q, {1.0f, 0.0f, 0.0f});
   const Vec3 down = RotateVector(q, {0.0f, -1.0f, 0.0f});
   const Vec3 forward = RotateVector(q, {0.0f, 0.0f, 1.0f});
@@ -116,8 +144,11 @@ InputCamera InputCameraFromCameraParams(const CameraParams& camera, size_t index
 
   InputCamera out{};
   out.name = camera.name.empty() ? "camera " + std::to_string(index) : camera.name;
-  out.position = right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
-  out.rotation = QuaternionFromBasis(right, up, forward);
+  if (Finite(right) && Finite(down) && Finite(forward) &&
+      Length(right) > 1e-6f && Length(down) > 1e-6f && Length(forward) > 1e-6f) {
+    out.position = right * (-e[3]) + down * (-e[7]) + forward * (-e[11]);
+    out.rotation = QuaternionFromBasis(right, up, forward);
+  }
   if (camera.height > 0 && camera.intrinsic[4] > 0.0f) {
     out.fovYRadians = 2.0f * std::atan(static_cast<float>(camera.height) * 0.5f / camera.intrinsic[4]);
   }

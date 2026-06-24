@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -18,8 +19,54 @@ namespace {
 constexpr uint32_t kDefaultCameraWidth = 1600;
 constexpr uint32_t kDefaultCameraHeight = 900;
 constexpr size_t kMaxCameraStringBytes = 4096;
+constexpr float kCameraBasisEpsilon = 1e-5f;
 
 using Json = nlohmann::json;
+
+bool IsFinite(float v) {
+  return std::isfinite(v);
+}
+
+bool IsFinite(const std::array<float, 16>& values) {
+  for (float value : values) {
+    if (!IsFinite(value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsFinite(const std::array<float, 9>& values) {
+  for (float value : values) {
+    if (!IsFinite(value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ValidCameraBasis(const std::array<float, 16>& e) {
+  const Vec3 right{e[0], e[1], e[2]};
+  const Vec3 down{e[4], e[5], e[6]};
+  const Vec3 forward{e[8], e[9], e[10]};
+  return Length(right) > kCameraBasisEpsilon &&
+         Length(down) > kCameraBasisEpsilon &&
+         Length(forward) > kCameraBasisEpsilon;
+}
+
+Status ValidateCameraParams(const CameraParams& camera) {
+  if (!IsFinite(camera.extrinsic) || !IsFinite(camera.intrinsic)) {
+    return Status::Error("invalid camera matrix");
+  }
+  if (!ValidCameraBasis(camera.extrinsic)) {
+    return Status::Error("invalid camera extrinsic");
+  }
+  if (camera.intrinsic[0] <= 0.0f || camera.intrinsic[4] <= 0.0f ||
+      std::abs(camera.intrinsic[8]) <= kCameraBasisEpsilon) {
+    return Status::Error("invalid camera intrinsic");
+  }
+  return Status::Ok();
+}
 
 std::string ReadCameraName(const Json& item) {
   const auto it = item.find("name");
@@ -71,7 +118,11 @@ StatusOr<std::array<float, Rows * Cols>> ReadMatrix(const Json& item, const char
       return StatusOr<std::array<float, Rows * Cols>>::Error("invalid camera matrix");
     }
     for (size_t col = 0; col < Cols; ++col) {
-      out[row * Cols + col] = rowJson.at(col).get<float>();
+      const float value = rowJson.at(col).get<float>();
+      if (!IsFinite(value)) {
+        return StatusOr<std::array<float, Rows * Cols>>::Error("invalid camera matrix");
+      }
+      out[row * Cols + col] = value;
     }
   }
   return StatusOr<std::array<float, Rows * Cols>>::Ok(out);
@@ -95,6 +146,10 @@ StatusOr<CameraParams> ParseMatrixCamera(const Json& item) {
   camera.height = item.value("height", 0u);
   if (camera.width == 0 || camera.height == 0) {
     return StatusOr<CameraParams>::Error("invalid camera dimensions");
+  }
+  Status validation = ValidateCameraParams(camera);
+  if (!validation.ok) {
+    return StatusOr<CameraParams>::Error(validation.message);
   }
   return StatusOr<CameraParams>::Ok(std::move(camera));
 }

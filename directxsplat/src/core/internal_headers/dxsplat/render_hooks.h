@@ -27,7 +27,7 @@ struct RenderHookContext {
   UploadedSceneHandle scene{};
   const RenderInput* input = nullptr;
   const RenderTargetBinding* targets = nullptr;
-  const GpuFrameResources* resources = nullptr;
+  GpuFrameResources* resources = nullptr;
   FrameStats* stats = nullptr;
   uint64_t frameIndex = 0;
 };

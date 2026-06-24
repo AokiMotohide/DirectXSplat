@@ -1,12 +1,40 @@
 #include "dxsplat/directxsplat.h"
 
+#include <array>
+#include <cmath>
 #include <mutex>
 
+#include "dxsplat/math.h"
 #include "api/OwnedD3D12Runtime.h"
 
 namespace dxsplat {
 
 namespace {
+
+constexpr float kCameraBasisEpsilon = 1e-5f;
+
+bool Finite(float v) {
+  return std::isfinite(v);
+}
+
+template <size_t Count>
+bool Finite(const std::array<float, Count>& values) {
+  for (float value : values) {
+    if (!Finite(value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ValidCameraBasis(const std::array<float, 16>& e) {
+  const Vec3 right{e[0], e[1], e[2]};
+  const Vec3 down{e[4], e[5], e[6]};
+  const Vec3 forward{e[8], e[9], e[10]};
+  return Length(right) > kCameraBasisEpsilon &&
+         Length(down) > kCameraBasisEpsilon &&
+         Length(forward) > kCameraBasisEpsilon;
+}
 
 Status ValidateDrawInputs(const GaussianSplats& splats, const CameraParams& camera, const DrawOptions& options) {
   if (splats.Empty()) {
@@ -24,8 +52,22 @@ Status ValidateDrawInputs(const GaussianSplats& splats, const CameraParams& came
   if (camera.height == 0) {
     return Status::Error("camera height must be greater than zero");
   }
-  if (options.farPlane <= options.nearPlane) {
+  if (!Finite(camera.extrinsic) || !Finite(camera.intrinsic)) {
+    return Status::Error("camera matrices must be finite");
+  }
+  if (!ValidCameraBasis(camera.extrinsic)) {
+    return Status::Error("camera extrinsic is invalid");
+  }
+  if (camera.intrinsic[0] <= 0.0f || camera.intrinsic[4] <= 0.0f ||
+      std::abs(camera.intrinsic[8]) <= kCameraBasisEpsilon) {
+    return Status::Error("camera intrinsic is invalid");
+  }
+  if (!Finite(options.nearPlane) || !Finite(options.farPlane) || options.farPlane <= options.nearPlane) {
     return Status::Error("far plane must be greater than near plane");
+  }
+  if (!Finite(options.background[0]) || !Finite(options.background[1]) || !Finite(options.background[2]) ||
+      !Finite(options.antialiasingStrength)) {
+    return Status::Error("draw options must be finite");
   }
   return Status::Ok();
 }

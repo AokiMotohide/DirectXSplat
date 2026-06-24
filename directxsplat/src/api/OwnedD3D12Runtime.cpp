@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <sstream>
 #include <stdexcept>
 
 #include "api/GaussianSplatsInternal.h"
@@ -16,10 +17,27 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 constexpr uint64_t kBytesPerPixel = 4;
+constexpr DWORD kFenceWaitPollMs = 50;
+
+std::string HrString(HRESULT hr) {
+  std::ostringstream ss;
+  ss << "0x" << std::hex << static_cast<unsigned long>(hr);
+  return ss.str();
+}
 
 Status HrStatus(HRESULT hr, const char* message) {
-  (void)hr;
-  return Status::Error(message);
+  return Status::Error(std::string(message) + " " + HrString(hr));
+}
+
+Status CheckDeviceRemoved(ID3D12Device* device) {
+  if (device == nullptr) {
+    return Status::Ok();
+  }
+  const HRESULT removed = device->GetDeviceRemovedReason();
+  if (FAILED(removed)) {
+    return HrStatus(removed, "D3D12 device removed");
+  }
+  return Status::Ok();
 }
 
 Status ValidateReadbackLayout(uint32_t width, uint32_t height, uint32_t rowPitch, uint64_t readbackBytes) {
@@ -274,11 +292,28 @@ Status OwnedD3D12Runtime::ExecuteAndWait(UploadSyncPoint sync) {
   fenceValue_ = targetFence;
 
   if (fence_->GetCompletedValue() < targetFence) {
+    Status deviceStatus = CheckDeviceRemoved(device_.Get());
+    if (!deviceStatus.ok) {
+      return deviceStatus;
+    }
     hr = fence_->SetEventOnCompletion(targetFence, fenceEvent_);
     if (FAILED(hr)) {
-      return HrStatus(hr, "failed waiting for fence");
+      deviceStatus = CheckDeviceRemoved(device_.Get());
+      return deviceStatus.ok ? HrStatus(hr, "failed waiting for fence") : deviceStatus;
     }
-    WaitForSingleObject(fenceEvent_, INFINITE);
+    while (fence_->GetCompletedValue() < targetFence) {
+      const DWORD wait = WaitForSingleObject(fenceEvent_, kFenceWaitPollMs);
+      if (wait == WAIT_OBJECT_0) {
+        break;
+      }
+      if (wait != WAIT_TIMEOUT) {
+        return Status::Error("failed waiting for fence");
+      }
+      deviceStatus = CheckDeviceRemoved(device_.Get());
+      if (!deviceStatus.ok) {
+        return deviceStatus;
+      }
+    }
   }
   return Status::Ok();
 }

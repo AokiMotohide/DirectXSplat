@@ -365,7 +365,7 @@ class GaussianRasterPipeline {
                     UploadedSceneHandle sceneHandle,
                     const RenderInput& input,
                     const RenderTargetBinding& target,
-                    const GpuFrameResources& resources,
+                    GpuFrameResources& resources,
                     FrameStats& stats) const;
 
   Microsoft::WRL::ComPtr<ID3D12Device> device_;

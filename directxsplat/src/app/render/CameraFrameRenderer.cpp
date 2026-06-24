@@ -222,21 +222,20 @@ Status CameraFrameRenderer::Initialize(ID3D12Device* device, DXGI_FORMAT colorFo
 }
 
 void CameraFrameRenderer::Shutdown() {
-  ReleaseUploadBuffer(vertexBuffer_, mappedVertices_, vertexCapacityBytes_);
-  ReleaseUploadBuffer(indexBuffer_, mappedIndices_, indexCapacityBytes_);
-  ReleaseUploadBuffer(instanceBuffer_, mappedInstances_, instanceCapacityBytes_);
+  for (FrameBuffers& frame : frames_) {
+    ReleaseFrameBuffers(frame);
+  }
   pipelineState_.Reset();
   rootSignature_.Reset();
   device_ = nullptr;
-  cachedCameraCount_ = 0;
-  cachedFrameSize_ = -1.0f;
-  instancesDirty_ = true;
 }
 
 void CameraFrameRenderer::Invalidate() {
-  cachedCameraCount_ = 0;
-  cachedFrameSize_ = -1.0f;
-  instancesDirty_ = true;
+  for (FrameBuffers& frame : frames_) {
+    frame.cachedCameraCount = 0;
+    frame.cachedFrameSize = -1.0f;
+    frame.instancesDirty = true;
+  }
 }
 
 Status CameraFrameRenderer::CreatePipeline() {
@@ -386,7 +385,21 @@ void CameraFrameRenderer::ReleaseUploadBuffer(ComPtr<ID3D12Resource>& resource, 
   capacity = 0;
 }
 
-Status CameraFrameRenderer::EnsureStaticGeometry() {
+void CameraFrameRenderer::ReleaseFrameBuffers(FrameBuffers& frame) {
+  ReleaseUploadBuffer(frame.vertexBuffer, frame.mappedVertices, frame.vertexCapacityBytes);
+  ReleaseUploadBuffer(frame.indexBuffer, frame.mappedIndices, frame.indexCapacityBytes);
+  ReleaseUploadBuffer(frame.instanceBuffer, frame.mappedInstances, frame.instanceCapacityBytes);
+  frame.cachedCameraCount = 0;
+  frame.cachedFrameSize = -1.0f;
+  frame.staticGeometryDirty = true;
+  frame.instancesDirty = true;
+}
+
+Status CameraFrameRenderer::EnsureStaticGeometry(FrameBuffers& frame) {
+  if (!frame.staticGeometryDirty && frame.vertexBuffer != nullptr && frame.indexBuffer != nullptr) {
+    return Status::Ok();
+  }
+
   const std::array<GpuVertex, kCameraFrameVertexCount> vertices = {{
       {{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
       {{-1.0f, -1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
@@ -397,25 +410,29 @@ Status CameraFrameRenderer::EnsureStaticGeometry() {
   const std::array<uint32_t, kCameraFrameIndexCount> indices = BuildCameraFrameIndices();
 
   Status status = EnsureUploadBuffer(vertices.size() * sizeof(GpuVertex),
-                                     vertexBuffer_,
-                                     mappedVertices_,
-                                     vertexCapacityBytes_);
+                                     frame.vertexBuffer,
+                                     frame.mappedVertices,
+                                     frame.vertexCapacityBytes);
   if (!status.ok) {
     return status;
   }
-  status = EnsureUploadBuffer(indices.size() * sizeof(uint32_t), indexBuffer_, mappedIndices_, indexCapacityBytes_);
+  status = EnsureUploadBuffer(indices.size() * sizeof(uint32_t),
+                              frame.indexBuffer,
+                              frame.mappedIndices,
+                              frame.indexCapacityBytes);
   if (!status.ok) {
     return status;
   }
-  std::memcpy(mappedVertices_, vertices.data(), vertices.size() * sizeof(GpuVertex));
-  std::memcpy(mappedIndices_, indices.data(), indices.size() * sizeof(uint32_t));
+  std::memcpy(frame.mappedVertices, vertices.data(), vertices.size() * sizeof(GpuVertex));
+  std::memcpy(frame.mappedIndices, indices.data(), indices.size() * sizeof(uint32_t));
+  frame.staticGeometryDirty = false;
   return Status::Ok();
 }
 
-Status CameraFrameRenderer::UpdateInstances(const CameraSet& cameras, float frameSize) {
+Status CameraFrameRenderer::UpdateInstances(FrameBuffers& frame, const CameraSet& cameras, float frameSize) {
   const float safeFrameSize = std::max(frameSize, 0.0f);
-  if (!instancesDirty_ && cachedCameraCount_ == cameras.cameras.size() &&
-      std::abs(cachedFrameSize_ - safeFrameSize) <= 1e-6f) {
+  if (!frame.instancesDirty && frame.cachedCameraCount == cameras.cameras.size() &&
+      std::abs(frame.cachedFrameSize - safeFrameSize) <= 1e-6f) {
     return Status::Ok();
   }
 
@@ -427,17 +444,17 @@ Status CameraFrameRenderer::UpdateInstances(const CameraSet& cameras, float fram
 
   Status status =
       EnsureUploadBuffer(instances.size() * sizeof(CameraFrameInstance),
-                         instanceBuffer_,
-                         mappedInstances_,
-                         instanceCapacityBytes_);
+                         frame.instanceBuffer,
+                         frame.mappedInstances,
+                         frame.instanceCapacityBytes);
   if (!status.ok) {
     return status;
   }
-  std::memcpy(mappedInstances_, instances.data(), instances.size() * sizeof(CameraFrameInstance));
+  std::memcpy(frame.mappedInstances, instances.data(), instances.size() * sizeof(CameraFrameInstance));
 
-  cachedCameraCount_ = cameras.cameras.size();
-  cachedFrameSize_ = safeFrameSize;
-  instancesDirty_ = false;
+  frame.cachedCameraCount = cameras.cameras.size();
+  frame.cachedFrameSize = safeFrameSize;
+  frame.instancesDirty = false;
   return Status::Ok();
 }
 
@@ -445,6 +462,7 @@ Status CameraFrameRenderer::Render(ID3D12GraphicsCommandList* commandList,
                                    D3D12_CPU_DESCRIPTOR_HANDLE colorRtv,
                                    D3D12_VIEWPORT viewport,
                                    D3D12_RECT scissor,
+                                   uint32_t frameSlot,
                                    const Mat4& view,
                                    const Mat4& projection,
                                    const CameraSet& cameras,
@@ -459,11 +477,13 @@ Status CameraFrameRenderer::Render(ID3D12GraphicsCommandList* commandList,
     return Status::Error("invalid camera frame render target");
   }
 
-  Status status = EnsureStaticGeometry();
+  FrameBuffers& frame = frames_[frameSlot % frames_.size()];
+
+  Status status = EnsureStaticGeometry(frame);
   if (!status.ok) {
     return status;
   }
-  status = UpdateInstances(cameras, uiState.frameSize);
+  status = UpdateInstances(frame, cameras, uiState.frameSize);
   if (!status.ok) {
     return status;
   }
@@ -479,15 +499,15 @@ Status CameraFrameRenderer::Render(ID3D12GraphicsCommandList* commandList,
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
 
   D3D12_VERTEX_BUFFER_VIEW vbv[2]{};
-  vbv[0].BufferLocation = vertexBuffer_->GetGPUVirtualAddress();
+  vbv[0].BufferLocation = frame.vertexBuffer->GetGPUVirtualAddress();
   vbv[0].SizeInBytes = static_cast<UINT>(kCameraFrameVertexCount * sizeof(GpuVertex));
   vbv[0].StrideInBytes = sizeof(GpuVertex);
-  vbv[1].BufferLocation = instanceBuffer_->GetGPUVirtualAddress();
+  vbv[1].BufferLocation = frame.instanceBuffer->GetGPUVirtualAddress();
   vbv[1].SizeInBytes = static_cast<UINT>(cameras.cameras.size() * sizeof(CameraFrameInstance));
   vbv[1].StrideInBytes = sizeof(CameraFrameInstance);
 
   D3D12_INDEX_BUFFER_VIEW ibv{};
-  ibv.BufferLocation = indexBuffer_->GetGPUVirtualAddress();
+  ibv.BufferLocation = frame.indexBuffer->GetGPUVirtualAddress();
   ibv.SizeInBytes = static_cast<UINT>(kCameraFrameIndexCount * sizeof(uint32_t));
   ibv.Format = DXGI_FORMAT_R32_UINT;
   commandList->IASetVertexBuffers(0, 2, vbv);
