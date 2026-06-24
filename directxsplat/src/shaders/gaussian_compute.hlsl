@@ -331,7 +331,9 @@ void CSPrepare(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadI
         scaled = max(scaled, 1e-4);
         float4 posView4 = mul(gView, float4(position, 1.0));
         viewDepth = posView4.z * (gPositiveViewSpaceZ != 0u ? 1.0f : -1.0f);
-        bool valid = viewDepth > 1e-4f && isfinite(posView4.x) && isfinite(posView4.y) &&
+        const float nearDepth = max(gNearPlane, 1e-4f);
+        const float farDepth = max(gFarPlane, nearDepth + 1e-3f);
+        bool valid = viewDepth > nearDepth && viewDepth < farDepth && isfinite(posView4.x) && isfinite(posView4.y) &&
                      isfinite(posView4.z) && isfinite(posView4.w);
 
         float4 clip = 0.0f;
@@ -407,9 +409,16 @@ void CSPrepare(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadI
         if (valid) {
           float support = sqrt(8.0f);
           axisPixels = axisPixels * support;
-          axisPixels = min(axisPixels, float2(gMaxAxisPixels, gMaxAxisPixels));
+          const float maxAxisPixels = max(gMaxAxisPixels, 0.5f);
+          valid = axisPixels.x <= maxAxisPixels && axisPixels.y <= maxAxisPixels;
           axisPixels = max(axisPixels, 0.5f);
-          valid = !(axisPixels.x < 0.55f && axisPixels.y < 0.55f);
+          const float screenRadius = max(axisPixels.x, axisPixels.y);
+          const float2 centerPixel = float2((ndc.x + 1.0f) / gNdcX, (1.0f - ndc.y) / gNdcY);
+          valid = valid && !(axisPixels.x < 0.55f && axisPixels.y < 0.55f) &&
+                  centerPixel.x + screenRadius >= 0.0f &&
+                  centerPixel.y + screenRadius >= 0.0f &&
+                  centerPixel.x - screenRadius <= (float)gViewportWidth &&
+                  centerPixel.y - screenRadius <= (float)gViewportHeight;
         }
 
         active = valid;

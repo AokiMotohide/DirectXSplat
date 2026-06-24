@@ -47,6 +47,7 @@ class CameraController {
   void SetViewport(uint32_t width, uint32_t height);
   void SetState(const CameraState& state);
   const CameraState& State() const;
+  bool HasMatrixOverride() const;
 
   void UpdateFps(float dt, bool moveForward, bool moveBackward, bool moveLeft, bool moveRight, bool moveUp,
                  bool moveDown, float lookDeltaX, float lookDeltaY, float rollDelta, bool rotationEnabled);

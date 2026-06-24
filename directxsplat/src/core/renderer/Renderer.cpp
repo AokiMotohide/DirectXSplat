@@ -63,7 +63,38 @@ bool Finite(const Vec3& v) {
   return Finite(v.x) && Finite(v.y) && Finite(v.z);
 }
 
-float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& input);
+bool Finite(const Vec2& v) {
+  return Finite(v.x) && Finite(v.y);
+}
+
+bool Finite(const Mat4& m) {
+  for (float v : m.m) {
+    if (!Finite(v)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Status ValidateRenderInput(const RenderInput& input) {
+  if (input.viewportWidth == 0 || input.viewportHeight == 0) {
+    return Status::Error("render input viewport is invalid");
+  }
+  if (!Finite(input.cameraPosition) || !Finite(input.view) || !Finite(input.proj) || !Finite(input.jitter)) {
+    return Status::Error("render input camera is invalid");
+  }
+  if (!Finite(input.nearPlane) || !Finite(input.farPlane) ||
+      input.nearPlane <= 0.0f || input.farPlane <= input.nearPlane) {
+    return Status::Error("render input depth range is invalid");
+  }
+  if (std::abs(input.proj.m[0]) <= 1e-8f || std::abs(input.proj.m[5]) <= 1e-8f ||
+      std::abs(input.proj.m[10]) <= 1e-8f) {
+    return Status::Error("render input projection is invalid");
+  }
+  return Status::Ok();
+}
+
+float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& input, bool requireCenterDepth);
 
 Aabb MergeAabb(const Aabb& a, const Aabb& b) {
   if (!a.valid) {
@@ -377,10 +408,10 @@ float ScreenRadiusForChunk(const Aabb& bounds, const RenderInput& input) {
   }
   const Vec3 center = ComputeAabbCenter(bounds);
   const float radius = std::max(ComputeAabbRadius(bounds), 1e-3f);
-  return ScreenRadiusForChunk(center, radius, input);
+  return ScreenRadiusForChunk(center, radius, input, true);
 }
 
-float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& input) {
+float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& input, bool requireCenterDepth) {
   if (!Finite(center)) {
     return 0.0f;
   }
@@ -389,7 +420,12 @@ float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& 
   const Vec4 view = Mul(input.view, center4);
   const float viewDepth = view.z * (input.settings.positiveViewSpaceZ ? 1.0f : -1.0f);
   const float nearPlane = std::max(input.nearPlane, 1e-4f);
-  if (!Finite(view.x) || !Finite(view.y) || !Finite(view.z) || !Finite(view.w) || viewDepth + radius <= nearPlane) {
+  const float farPlane = std::max(input.farPlane, nearPlane + 0.001f);
+  if (!Finite(view.x) || !Finite(view.y) || !Finite(view.z) || !Finite(view.w) ||
+      viewDepth + radius <= nearPlane || viewDepth - radius >= farPlane) {
+    return 0.0f;
+  }
+  if (requireCenterDepth && (viewDepth <= nearPlane || viewDepth >= farPlane)) {
     return 0.0f;
   }
   const float focalX = std::abs(input.proj.m[0]) * static_cast<float>(std::max(input.viewportWidth, 1u)) * 0.5f;
@@ -404,13 +440,20 @@ float ScreenRadiusForChunk(const Vec3& center, float radius, const RenderInput& 
   }
   const float screenRadius = std::min(screenRadiusRaw, kMaxResidencyScreenRadius);
   const Vec4 clip = Mul(input.proj, view);
-  if (viewDepth > nearPlane && Finite(clip.x) && Finite(clip.y) && Finite(clip.w) && std::abs(clip.w) > 1e-6f) {
+  if (viewDepth > nearPlane && viewDepth < farPlane) {
+    if (!Finite(clip.x) || !Finite(clip.y) || !Finite(clip.z) || !Finite(clip.w) || std::abs(clip.w) <= 1e-6f) {
+      return requireCenterDepth ? 0.0f : screenRadius;
+    }
     const float dilation = input.settings.fastCulling ? std::max(input.settings.frustumDilation, 0.0f) : 1.0f;
     const float slackX = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportWidth, 1u)) + dilation;
     const float slackY = screenRadius * 2.0f / static_cast<float>(std::max(input.viewportHeight, 1u)) + dilation;
     const float ndcX = clip.x / clip.w;
     const float ndcY = clip.y / clip.w;
-    if (ndcX < -1.0f - slackX || ndcX > 1.0f + slackX || ndcY < -1.0f - slackY || ndcY > 1.0f + slackY) {
+    const float ndcZ = clip.z / clip.w;
+    if (!Finite(ndcX) || !Finite(ndcY) || !Finite(ndcZ) ||
+        ndcX < -1.0f - slackX || ndcX > 1.0f + slackX ||
+        ndcY < -1.0f - slackY || ndcY > 1.0f + slackY ||
+        (requireCenterDepth && (ndcZ < 0.0f || ndcZ > 1.0f))) {
       return 0.0f;
     }
   }
@@ -796,7 +839,7 @@ class Renderer::Impl {
       if (!chunk.visible || chunk.radius <= 0.0f || chunk.lodCounts[0] == 0) {
         continue;
       }
-      const float screenRadius = ScreenRadiusForChunk(chunk.center, chunk.radius, input);
+      const float screenRadius = ScreenRadiusForChunk(chunk.center, chunk.radius, input, true);
       if (screenRadius < config.cullScreenRadius) {
         continue;
       }
@@ -836,7 +879,7 @@ class Renderer::Impl {
       return;
     }
     const ResidencyNode& node = snapshot.nodes[static_cast<size_t>(nodeIndex)];
-    const float nodeScreenRadius = ScreenRadiusForChunk(node.center, node.radius, input);
+    const float nodeScreenRadius = ScreenRadiusForChunk(node.center, node.radius, input, false);
     if (nodeScreenRadius < config.cullScreenRadius) {
       return;
     }
@@ -2529,6 +2572,10 @@ class Renderer::Impl {
     if (!frameStatus.ok) {
       return frameStatus;
     }
+    Status inputStatus = ValidateRenderInput(input);
+    if (!inputStatus.ok) {
+      return inputStatus;
+    }
     RenderOp op{};
     Status access = BeginRenderAccess(sceneHandle, op);
     if (!access.ok) {
@@ -2568,6 +2615,10 @@ class Renderer::Impl {
     Status frameStatus = ValidateFrameContext(frameContext);
     if (!frameStatus.ok) {
       return frameStatus;
+    }
+    Status inputStatus = ValidateRenderInput(input);
+    if (!inputStatus.ok) {
+      return inputStatus;
     }
     RenderOp op{};
     Status s = BeginRenderAccess(sceneHandle, op);

@@ -37,6 +37,10 @@ Status ValidateCameraSet(const CameraSet& cameraSet) {
   return Status::Ok();
 }
 
+float ClampFinite(float v, float lo, float hi, float fallback) {
+  return std::isfinite(v) ? std::clamp(v, lo, hi) : fallback;
+}
+
 std::vector<InputCamera> InputCamerasFromCameraSet(const CameraSet& cameraSet) {
   std::vector<InputCamera> out;
   out.reserve(cameraSet.cameras.size());
@@ -184,10 +188,12 @@ Status Application::Run() {
     }
 
     const auto now = std::chrono::steady_clock::now();
-    const float dt = std::chrono::duration<float>(now - previous).count();
+    const float rawDt = std::chrono::duration<float>(now - previous).count();
+    const float dt = ClampFinite(rawDt, 0.0f, 0.05f, 0.0f);
     previous = now;
-    const float frameMs = dt * 1000.0f;
-    const float fps = dt > 0.000001f ? 1.0f / dt : 0.0f;
+    const float frameDt = ClampFinite(rawDt, 0.0f, 10.0f, 0.0f);
+    const float frameMs = frameDt * 1000.0f;
+    const float fps = frameDt > 0.000001f ? 1.0f / frameDt : 0.0f;
     if (smoothedFrameMs_ <= 0.0f) {
       smoothedFrameMs_ = frameMs;
       smoothedFps_ = fps;
@@ -619,8 +625,8 @@ void Application::UpdateInput(float dt) {
 
   if (state.navigatorMode == NavigatorMode::Fps) {
     const bool mouseLook = (input.mouseButtonsDown[0] || input.mouseButtonsDown[1]) && !io.WantCaptureMouse;
-    float lookDx = mouseLook ? input.mouseDeltaX : 0.0f;
-    float lookDy = mouseLook ? input.mouseDeltaY : 0.0f;
+    float lookDx = mouseLook ? ClampFinite(input.mouseDeltaX, -240.0f, 240.0f, 0.0f) : 0.0f;
+    float lookDy = mouseLook ? ClampFinite(input.mouseDeltaY, -240.0f, 240.0f, 0.0f) : 0.0f;
     float rollDelta = 0.0f;
     constexpr float keyLookRate = 500.0f;
     if (!io.WantCaptureKeyboard) {
@@ -631,9 +637,20 @@ void Application::UpdateInput(float dt) {
       if (input.KeyDown('U')) rollDelta -= keyLookRate * dt;
       if (input.KeyDown('O')) rollDelta += keyLookRate * dt;
     }
+    rollDelta = ClampFinite(rollDelta, -240.0f, 240.0f, 0.0f);
     const bool rotationEnabled = mouseLook || lookDx != 0.0f || lookDy != 0.0f || rollDelta != 0.0f;
-    camera_.UpdateFps(dt, input.KeyDown('W'), input.KeyDown('S'), input.KeyDown('A'), input.KeyDown('D'),
-                      input.KeyDown('E'), input.KeyDown('Q'), lookDx, lookDy, rollDelta, rotationEnabled);
+    const bool moveForward = !io.WantCaptureKeyboard && input.KeyDown('W');
+    const bool moveBackward = !io.WantCaptureKeyboard && input.KeyDown('S');
+    const bool moveLeft = !io.WantCaptureKeyboard && input.KeyDown('A');
+    const bool moveRight = !io.WantCaptureKeyboard && input.KeyDown('D');
+    const bool moveUp = !io.WantCaptureKeyboard && input.KeyDown('E');
+    const bool moveDown = !io.WantCaptureKeyboard && input.KeyDown('Q');
+    const bool moving = moveForward || moveBackward || moveLeft || moveRight || moveUp || moveDown;
+    if (camera_.HasMatrixOverride() && (rotationEnabled || moving)) {
+      cameraCutPending_ = true;
+    }
+    camera_.UpdateFps(dt, moveForward, moveBackward, moveLeft, moveRight, moveUp, moveDown,
+                      lookDx, lookDy, rollDelta, rotationEnabled);
   } else {
     float orbitDx = 0.0f;
     float orbitDy = 0.0f;
@@ -641,15 +658,20 @@ void Application::UpdateInput(float dt) {
     float panDy = 0.0f;
     if (!io.WantCaptureMouse) {
       if (input.mouseButtonsDown[0]) {
-        orbitDx = input.mouseDeltaX;
-        orbitDy = input.mouseDeltaY;
+        orbitDx = ClampFinite(input.mouseDeltaX, -240.0f, 240.0f, 0.0f);
+        orbitDy = ClampFinite(input.mouseDeltaY, -240.0f, 240.0f, 0.0f);
       }
       if (input.mouseButtonsDown[2]) {
-        panDx = input.mouseDeltaX;
-        panDy = input.mouseDeltaY;
+        panDx = ClampFinite(input.mouseDeltaX, -240.0f, 240.0f, 0.0f);
+        panDy = ClampFinite(input.mouseDeltaY, -240.0f, 240.0f, 0.0f);
       }
     }
-    camera_.UpdateOrbit(dt, orbitDx, orbitDy, panDx, panDy, io.WantCaptureMouse ? 0.0f : input.wheelDelta);
+    const float wheelDelta = io.WantCaptureMouse ? 0.0f : ClampFinite(input.wheelDelta, -10.0f, 10.0f, 0.0f);
+    if (camera_.HasMatrixOverride() &&
+        (orbitDx != 0.0f || orbitDy != 0.0f || panDx != 0.0f || panDy != 0.0f || wheelDelta != 0.0f)) {
+      cameraCutPending_ = true;
+    }
+    camera_.UpdateOrbit(dt, orbitDx, orbitDy, panDx, panDy, wheelDelta);
   }
 }
 

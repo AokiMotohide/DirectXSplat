@@ -9,6 +9,11 @@ namespace dxsplat {
 
 namespace {
 
+constexpr float kMaxCameraDt = 0.05f;
+constexpr float kMaxLookDelta = 240.0f;
+constexpr float kMaxWheelDelta = 10.0f;
+constexpr float kTwoPi = 6.28318530718f;
+
 bool Finite(float v) {
   return std::isfinite(v);
 }
@@ -19,6 +24,25 @@ bool Finite(const Vec3& v) {
 
 bool Finite(const Quat& q) {
   return Finite(q.x) && Finite(q.y) && Finite(q.z) && Finite(q.w);
+}
+
+float ClampFinite(float v, float lo, float hi, float fallback) {
+  return Finite(v) ? std::clamp(v, lo, hi) : fallback;
+}
+
+float WrapAngle(float v) {
+  return Finite(v) ? std::remainder(v, kTwoPi) : 0.0f;
+}
+
+Vec3 SafeNormalize(const Vec3& v, const Vec3& fallback) {
+  if (!Finite(v)) {
+    return fallback;
+  }
+  const float len = Length(v);
+  if (!Finite(len) || len <= 1e-6f) {
+    return fallback;
+  }
+  return v / len;
 }
 
 Quat QuaternionFromYawPitch(float yaw, float pitch) {
@@ -39,6 +63,18 @@ Vec3 RotateVector(const Quat& q, const Vec3& v) {
   const Vec3 u{q.x, q.y, q.z};
   const float s = q.w;
   return u * (2.0f * Dot(u, v)) + v * (s * s - Dot(u, u)) + Cross(u, v) * (2.0f * s);
+}
+
+void BuildViewBasis(const Vec3& forward, float roll, Vec3& right, Vec3& up) {
+  const Vec3 f = SafeNormalize(forward, {0.0f, 0.0f, 1.0f});
+  const Vec3 referenceUp = std::abs(f.y) > 0.98f ? Vec3{0.0f, 0.0f, 1.0f} : Vec3{0.0f, 1.0f, 0.0f};
+  const Vec3 baseRight = SafeNormalize(Cross(referenceUp, f), {1.0f, 0.0f, 0.0f});
+  const Vec3 baseUp = SafeNormalize(Cross(f, baseRight), {0.0f, 1.0f, 0.0f});
+  const float safeRoll = WrapAngle(roll);
+  const float c = std::cos(safeRoll);
+  const float s = std::sin(safeRoll);
+  right = SafeNormalize(baseRight * c + baseUp * s, baseRight);
+  up = SafeNormalize(baseUp * c - baseRight * s, baseUp);
 }
 
 }  
@@ -69,6 +105,8 @@ void CameraController::SetState(const CameraState& state) {
   if (!Finite(state_.roll)) {
     state_.roll = 0.0f;
   }
+  state_.yaw = WrapAngle(state_.yaw);
+  state_.roll = WrapAngle(state_.roll);
   if (state_.navigatorMode == NavigatorMode::Trackball) {
     state_.navigatorMode = NavigatorMode::Orbit;
   }
@@ -86,13 +124,26 @@ void CameraController::SetState(const CameraState& state) {
 
 const CameraState& CameraController::State() const { return state_; }
 
+bool CameraController::HasMatrixOverride() const { return matrixOverride_.has_value(); }
+
 void CameraController::UpdateFps(float dt, bool moveForward, bool moveBackward, bool moveLeft, bool moveRight,
                                  bool moveUp, bool moveDown, float lookDeltaX, float lookDeltaY,
                                  float rollDelta, bool rotationEnabled) {
+  dt = ClampFinite(dt, 0.0f, kMaxCameraDt, 0.0f);
+  lookDeltaX = ClampFinite(lookDeltaX, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  lookDeltaY = ClampFinite(lookDeltaY, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  rollDelta = ClampFinite(rollDelta, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  const bool movingInput = moveForward || moveBackward || moveLeft || moveRight || moveUp || moveDown;
+  if (rotationEnabled || movingInput) {
+    ClearMatrixOverride();
+  }
+
   if (rotationEnabled) {
     state_.yaw += lookDeltaX * 0.002f * state_.rotationSpeed;
     state_.pitch += lookDeltaY * 0.002f * state_.rotationSpeed;
     state_.roll += rollDelta * 0.002f * state_.rotationSpeed;
+    state_.yaw = WrapAngle(state_.yaw);
+    state_.roll = WrapAngle(state_.roll);
     ClampPitch();
   }
 
@@ -109,9 +160,6 @@ void CameraController::UpdateFps(float dt, bool moveForward, bool moveBackward, 
   if (moveDown) delta = delta - u;
 
   const bool moving = Length(delta) > 0.0f;
-  if (rotationEnabled || moving) {
-    ClearMatrixOverride();
-  }
   if (state_.useAcceleration) {
     accelerationFactor_ = moving ? std::min(accelerationFactor_ * 1.02f, 50.0f) : 1.0f;
   } else {
@@ -121,6 +169,9 @@ void CameraController::UpdateFps(float dt, bool moveForward, bool moveBackward, 
   if (moving) {
     delta = Normalize(delta) * (state_.movementSpeed * accelerationFactor_ * dt);
     state_.position = state_.position + delta;
+    if (!Finite(state_.position)) {
+      state_.position = {};
+    }
   }
 
   if (state_.navigatorMode == NavigatorMode::Trackball || state_.navigatorMode == NavigatorMode::Orbit) {
@@ -130,11 +181,17 @@ void CameraController::UpdateFps(float dt, bool moveForward, bool moveBackward, 
 
 void CameraController::UpdateOrbit(float, float orbitDeltaX, float orbitDeltaY, float panDeltaX, float panDeltaY,
                                     float wheelDelta) {
+  orbitDeltaX = ClampFinite(orbitDeltaX, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  orbitDeltaY = ClampFinite(orbitDeltaY, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  panDeltaX = ClampFinite(panDeltaX, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  panDeltaY = ClampFinite(panDeltaY, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  wheelDelta = ClampFinite(wheelDelta, -kMaxWheelDelta, kMaxWheelDelta, 0.0f);
   if (orbitDeltaX != 0.0f || orbitDeltaY != 0.0f || panDeltaX != 0.0f || panDeltaY != 0.0f || wheelDelta != 0.0f) {
     ClearMatrixOverride();
   }
   state_.yaw += orbitDeltaX * 0.002f * state_.rotationSpeed;
   state_.pitch += orbitDeltaY * 0.002f * state_.rotationSpeed;
+  state_.yaw = WrapAngle(state_.yaw);
   ClampPitch();
 
   const Vec3 r = Right();
@@ -147,13 +204,20 @@ void CameraController::UpdateOrbit(float, float orbitDeltaX, float orbitDeltaY, 
 
 void CameraController::UpdateTrackball(float, float orbitDeltaX, float orbitDeltaY, float panDeltaX, float panDeltaY,
                                         float wheelDelta) {
+  orbitDeltaX = ClampFinite(orbitDeltaX, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  orbitDeltaY = ClampFinite(orbitDeltaY, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  panDeltaX = ClampFinite(panDeltaX, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  panDeltaY = ClampFinite(panDeltaY, -kMaxLookDelta, kMaxLookDelta, 0.0f);
+  wheelDelta = ClampFinite(wheelDelta, -kMaxWheelDelta, kMaxWheelDelta, 0.0f);
   if (orbitDeltaX != 0.0f || orbitDeltaY != 0.0f || panDeltaX != 0.0f || panDeltaY != 0.0f || wheelDelta != 0.0f) {
     ClearMatrixOverride();
   }
-  const Vec3 before = Normalize(state_.position - state_.orbitPivot);
+  const Vec3 before = SafeNormalize(state_.position - state_.orbitPivot, Forward() * -1.0f);
   state_.yaw += orbitDeltaX * 0.002f * state_.rotationSpeed;
   state_.pitch += orbitDeltaY * 0.002f * state_.rotationSpeed;
   state_.roll += (orbitDeltaX * orbitDeltaY) * 0.000002f * state_.rotationSpeed;
+  state_.yaw = WrapAngle(state_.yaw);
+  state_.roll = WrapAngle(state_.roll);
   ClampPitch();
 
   const Vec3 r = Right();
@@ -161,15 +225,11 @@ void CameraController::UpdateTrackball(float, float orbitDeltaX, float orbitDelt
   const float panScale = std::max(0.001f, state_.orbitDistance * 0.002f);
   state_.orbitPivot = state_.orbitPivot - r * (panDeltaX * panScale) + u * (panDeltaY * panScale);
   state_.orbitDistance = std::max(0.01f, state_.orbitDistance * std::exp(-wheelDelta * 0.12f));
-  const Vec3 after = Normalize(before + Right() * (-orbitDeltaX * 0.002f) + Up() * (orbitDeltaY * 0.002f));
-  if (Length(after) > 0.0f) {
-    state_.position = state_.orbitPivot + after * state_.orbitDistance;
-    const Vec3 f = Normalize(state_.orbitPivot - state_.position);
-    state_.yaw = std::atan2(f.x, f.z);
-    state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
-  } else {
-    state_.position = state_.orbitPivot - Forward() * state_.orbitDistance;
-  }
+  const Vec3 after = SafeNormalize(before + Right() * (-orbitDeltaX * 0.002f) + Up() * (orbitDeltaY * 0.002f), before);
+  state_.position = state_.orbitPivot + after * state_.orbitDistance;
+  const Vec3 f = SafeNormalize(state_.orbitPivot - state_.position, Forward());
+  state_.yaw = WrapAngle(std::atan2(f.x, f.z));
+  state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
 }
 
 void CameraController::FocusBounds(const Aabb& bounds) {
@@ -290,21 +350,21 @@ Mat4 CameraController::ProjectionMatrixForAspect(float aspect) const {
 
 Vec3 CameraController::Forward() const {
   const Quat q = QuaternionFromYawPitch(state_.yaw, state_.pitch);
-  return Normalize(RotateVector(q, {0.0f, 0.0f, 1.0f}));
+  return SafeNormalize(RotateVector(q, {0.0f, 0.0f, 1.0f}), {0.0f, 0.0f, 1.0f});
 }
 
 Vec3 CameraController::Right() const {
-  const Vec3 f = Forward();
-  const Vec3 baseRight = Normalize(Cross({0.0f, 1.0f, 0.0f}, f));
-  const Vec3 baseUp = Normalize(Cross(f, baseRight));
-  return Normalize(baseRight * std::cos(state_.roll) + baseUp * std::sin(state_.roll));
+  Vec3 right{};
+  Vec3 up{};
+  BuildViewBasis(Forward(), state_.roll, right, up);
+  return right;
 }
 
 Vec3 CameraController::Up() const {
-  const Vec3 f = Forward();
-  const Vec3 baseRight = Normalize(Cross({0.0f, 1.0f, 0.0f}, f));
-  const Vec3 baseUp = Normalize(Cross(f, baseRight));
-  return Normalize(baseUp * std::cos(state_.roll) - baseRight * std::sin(state_.roll));
+  Vec3 right{};
+  Vec3 up{};
+  BuildViewBasis(Forward(), state_.roll, right, up);
+  return up;
 }
 
 Vec3 CameraController::ScreenToWorldRayDir(float ndcX, float ndcY) const {
@@ -319,27 +379,23 @@ Vec3 CameraController::ScreenToWorldRayDir(float ndcX, float ndcY) const {
   }
   view.w = 0.0f;
   Vec4 world = Mul(invView, view);
-  return Normalize(Vec3{world.x, world.y, world.z});
+  return SafeNormalize(Vec3{world.x, world.y, world.z}, Forward());
 }
 
 void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& forward, const Vec3& up, float fovYRadians) {
-  const Vec3 f = Normalize(forward);
-  const Vec3 inputUp = Normalize(up);
-  if (!Finite(position) || !Finite(f) || !Finite(inputUp) || Length(f) <= 1e-6f || Length(inputUp) <= 1e-6f) {
+  if (!Finite(position) || !Finite(forward) || !Finite(up) || Length(forward) <= 1e-6f || Length(up) <= 1e-6f) {
     return;
   }
 
+  const Vec3 f = SafeNormalize(forward, {0.0f, 0.0f, 1.0f});
+  const Vec3 inputUp = SafeNormalize(up, {0.0f, 1.0f, 0.0f});
   state_.position = position;
-  state_.yaw = std::atan2(f.x, f.z);
+  state_.yaw = WrapAngle(std::atan2(f.x, f.z));
   state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
-  const Vec3 baseForward = Forward();
-  const Vec3 baseRight = Normalize(Cross({0.0f, 1.0f, 0.0f}, baseForward));
-  const Vec3 baseUp = Normalize(Cross(baseForward, baseRight));
-  if (!Finite(baseRight) || !Finite(baseUp) || Length(baseRight) <= 1e-6f || Length(baseUp) <= 1e-6f) {
-    state_.roll = 0.0f;
-  } else {
-    state_.roll = std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp));
-  }
+  Vec3 baseRight{};
+  Vec3 baseUp{};
+  BuildViewBasis(Forward(), 0.0f, baseRight, baseUp);
+  state_.roll = WrapAngle(std::atan2(-Dot(inputUp, baseRight), Dot(inputUp, baseUp)));
   state_.fovYRadians = Finite(fovYRadians) ? fovYRadians : 1.0471975512f;
   state_.orbitPivot = state_.position + f * state_.orbitDistance;
   SetState(state_);
