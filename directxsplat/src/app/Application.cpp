@@ -218,7 +218,7 @@ Status Application::Run() {
 
     frameStats_ = {};
 
-    Status beginStatus = d3d_.BeginFrame(vsyncEnabled_);
+    Status beginStatus = d3d_.BeginFrame(true);
     if (!beginStatus.ok) {
       statusMessage_ = beginStatus.message;
       continue;

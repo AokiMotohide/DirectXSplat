@@ -343,10 +343,7 @@ bool BuildRasterGaussian(uint sceneIndex, out RasterGaussian outG) {
   scaled = max(scaled, 1e-4);
   float4 posView4 = mul(gView, float4(position, 1.0));
   float viewDepth = posView4.z * (gPositiveViewSpaceZ != 0u ? 1.0f : -1.0f);
-  const float nearDepth = max(gNearPlane, 1e-4f);
-  const float farDepth = max(gFarPlane, nearDepth + 1e-3f);
-  if (viewDepth <= nearDepth || viewDepth >= farDepth ||
-      !isfinite(posView4.x) || !isfinite(posView4.y) || !isfinite(posView4.z) || !isfinite(posView4.w)) {
+  if (viewDepth <= 1e-4f || !isfinite(posView4.x) || !isfinite(posView4.y) || !isfinite(posView4.z) || !isfinite(posView4.w)) {
     return false;
   }
 
@@ -424,18 +421,8 @@ bool BuildRasterGaussian(uint sceneIndex, out RasterGaussian outG) {
   float2 orth = float2(-majorDir.y, majorDir.x);
 
   axisPixels = axisPixels * support;
-  const float maxAxisPixels = max(gMaxAxisPixels, 0.5f);
-  if (axisPixels.x > maxAxisPixels || axisPixels.y > maxAxisPixels) {
-    return false;
-  }
+  axisPixels = min(axisPixels, float2(gMaxAxisPixels, gMaxAxisPixels));
   axisPixels = max(axisPixels, 0.5f);
-  const float screenRadius = max(axisPixels.x, axisPixels.y);
-  if (centerPixel.x + screenRadius < 0.0f ||
-      centerPixel.y + screenRadius < 0.0f ||
-      centerPixel.x - screenRadius > (float)gViewportWidth ||
-      centerPixel.y - screenRadius > (float)gViewportHeight) {
-    return false;
-  }
 
   float alphaCutPower = log(kAlphaCut / max(opacity, 1e-6f));
   const float support2 = support * support;
