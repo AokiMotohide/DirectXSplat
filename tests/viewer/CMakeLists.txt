@@ -1,5 +1,6 @@
 add_executable(DirectXSplatViewerTests
   CameraFrameTests.cpp
+  CameraPathAnimatorTests.cpp
   CameraSetUiTests.cpp
   ImGuiViewerCoreTests.cpp
   ScreenshotWriterTests.cpp

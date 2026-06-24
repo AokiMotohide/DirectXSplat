@@ -7,6 +7,7 @@
 
 #include "app/CameraController.h"
 #include "platform/SwapchainContext.h"
+#include "app/CameraPathAnimator.h"
 #include "dxsplat/context.h"
 #include "dxsplat/directxsplat.h"
 #include "dxsplat/io.h"
@@ -41,6 +42,7 @@ class Application {
   Status CapturePointViewToExportDirectory();
 
   void UpdateInput(float dt);
+  void UpdateAnimation(float dt);
   void UpdateBackgroundSceneLoading();
   void ApplyInitialFraming(const Scene& scene);
   void ApplyCameraSetToActiveScene();
@@ -69,6 +71,8 @@ class Application {
   CameraSet cameraSet_;
   bool cameraSetAssigned_ = false;
   CameraUiState cameraUi_{};
+  AnimationUiState animationUi_{};
+  CameraPathAnimator cameraPathAnimator_;
   CameraFrameRenderer cameraFrameRenderer_;
 
   CameraController camera_;

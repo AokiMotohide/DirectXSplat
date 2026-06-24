@@ -7,6 +7,7 @@
 #include <string>
 
 #include "app/CameraController.h"
+#include "app/CameraPathAnimator.h"
 #include "dxsplat/scene.h"
 #include "dxsplat/settings.h"
 #include "metrics/ImageMetrics.h"
@@ -32,6 +33,7 @@ struct CameraUiState {
 struct UiFrameData {
   RenderSettings* settings = nullptr;
   CameraUiState* cameraUi = nullptr;
+  AnimationUiState* animationUi = nullptr;
   int32_t* selectedInputCamera = nullptr;
   uint32_t* renderWidthOverride = nullptr;
   uint32_t* renderHeightOverride = nullptr;
@@ -66,6 +68,7 @@ std::array<const char*, 5> UiSectionLabels();
 std::array<const char*, 5> UiGraphicLabels();
 std::array<const char*, 11> UiSceneLabels();
 std::array<const char*, 3> UiCameraLabels();
+std::array<const char*, 2> UiAnimationLabels();
 void ClampCameraUiState(CameraUiState& state, size_t cameraCount);
 
 class UiLayer {

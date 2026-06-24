@@ -13,6 +13,13 @@ TEST_CASE("Camera UI labels are exact") {
   CHECK(std::string(labels[2]) == "index");
 }
 
+TEST_CASE("Animation UI labels are exact") {
+  const std::array<const char*, 2> labels = dxsplat::UiAnimationLabels();
+
+  CHECK(std::string(labels[0]) == "Animation");
+  CHECK(std::string(labels[1]) == "fps");
+}
+
 TEST_CASE("index clamps when camera set shrinks") {
   dxsplat::CameraUiState state{};
   state.index = 5;

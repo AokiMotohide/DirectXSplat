@@ -243,6 +243,7 @@ Status Application::Run() {
 
     if (!paused_) {
       UpdateInput(dt);
+      UpdateAnimation(dt);
     }
 
     const Scene* activeScene = sceneManager_.ActiveScene();
@@ -335,6 +336,7 @@ Status Application::Run() {
     UiFrameData uiFrame{};
     uiFrame.settings = &renderSettings_;
     uiFrame.cameraUi = &cameraUi_;
+    uiFrame.animationUi = &animationUi_;
     uiFrame.selectedInputCamera = &selectedInputCamera_;
     uiFrame.renderWidthOverride = &renderWidthOverride_;
     uiFrame.renderHeightOverride = &renderHeightOverride_;
@@ -363,6 +365,7 @@ Status Application::Run() {
     actions.openScene = [&openSceneAfterFrame]() { openSceneAfterFrame = true; };
     actions.saveScreenshot = [this]() { SaveScreenshotDialog(); };
     actions.nextScene = [this]() {
+      StopAnimationOnCameraEdit(animationUi_, true);
       if (traversalEnabled_ && traversalLoader_.SceneCount() > 0) {
         const size_t next = (traversalRequestedIndex_ + 1) % traversalLoader_.SceneCount();
         RequestTraversalScene(next, true);
@@ -378,6 +381,7 @@ Status Application::Run() {
       ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
     actions.prevScene = [this]() {
+      StopAnimationOnCameraEdit(animationUi_, true);
       if (traversalEnabled_ && traversalLoader_.SceneCount() > 0) {
         const size_t prev = traversalRequestedIndex_ == 0 ? traversalLoader_.SceneCount() - 1 : traversalRequestedIndex_ - 1;
         RequestTraversalScene(prev, true);
@@ -394,6 +398,7 @@ Status Application::Run() {
       ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
     actions.resetView = [this]() {
+      StopAnimationOnCameraEdit(animationUi_, true);
       if (sceneManager_.ActiveScene() != nullptr) {
         ApplyInitialFraming(*sceneManager_.ActiveScene());
       }
@@ -516,6 +521,8 @@ Status Application::SetCameraSet(CameraSet cameras) {
   cameraSetAssigned_ = true;
   cameraFrameRenderer_.Invalidate();
   ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
+  cameraPathAnimator_.SetCameras(cameraSet_);
+  ClampAnimationUiState(animationUi_, cameraSet_.cameras.size());
   ApplyCameraSetToActiveScene();
   UpdateSelectedInputCamera();
   SelectCameraIndex(cameraUi_.index);
@@ -645,6 +652,7 @@ void Application::UpdateInput(float dt) {
     const bool moveUp = !io.WantCaptureKeyboard && input.KeyDown('E');
     const bool moveDown = !io.WantCaptureKeyboard && input.KeyDown('Q');
     const bool moving = moveForward || moveBackward || moveLeft || moveRight || moveUp || moveDown;
+    StopAnimationOnCameraEdit(animationUi_, rotationEnabled || moving);
     if (camera_.HasMatrixOverride() && (rotationEnabled || moving)) {
       cameraCutPending_ = true;
     }
@@ -666,12 +674,41 @@ void Application::UpdateInput(float dt) {
       }
     }
     const float wheelDelta = io.WantCaptureMouse ? 0.0f : ClampFinite(input.wheelDelta, -10.0f, 10.0f, 0.0f);
-    if (camera_.HasMatrixOverride() &&
-        (orbitDx != 0.0f || orbitDy != 0.0f || panDx != 0.0f || panDy != 0.0f || wheelDelta != 0.0f)) {
+    const bool cameraEdited =
+        orbitDx != 0.0f || orbitDy != 0.0f || panDx != 0.0f || panDy != 0.0f || wheelDelta != 0.0f;
+    StopAnimationOnCameraEdit(animationUi_, cameraEdited);
+    if (camera_.HasMatrixOverride() && cameraEdited) {
       cameraCutPending_ = true;
     }
     camera_.UpdateOrbit(dt, orbitDx, orbitDy, panDx, panDy, wheelDelta);
   }
+}
+
+void Application::UpdateAnimation(float dt) {
+  ClampAnimationUiState(animationUi_, cameraSet_.cameras.size());
+  if (!animationUi_.enabled || cameraSet_.cameras.empty()) {
+    return;
+  }
+
+  cameraPathAnimator_.SetTime(animationUi_.time);
+  cameraPathAnimator_.Advance(dt, animationUi_.fps);
+  animationUi_.time = cameraPathAnimator_.Time();
+
+  CameraState evaluated{};
+  if (!cameraPathAnimator_.Evaluate(evaluated)) {
+    animationUi_.enabled = false;
+    return;
+  }
+
+  const CameraState current = camera_.State();
+  evaluated.nearPlane = current.nearPlane;
+  evaluated.farPlane = current.farPlane;
+  evaluated.movementSpeed = current.movementSpeed;
+  evaluated.rotationSpeed = current.rotationSpeed;
+  evaluated.useAcceleration = current.useAcceleration;
+  evaluated.navigatorMode = NavigatorMode::Fps;
+  camera_.SetState(evaluated);
+  cameraCutPending_ = true;
 }
 
 void Application::UpdateBackgroundSceneLoading() {
@@ -719,6 +756,7 @@ void Application::UpdateBackgroundSceneLoading() {
 }
 
 void Application::ApplyInitialFraming(const Scene& scene) {
+  StopAnimationOnCameraEdit(animationUi_, true);
   std::vector<Vec3> points;
   for (const auto& set : scene.splatSets) {
     for (const auto& g : set.gaussians) {
@@ -747,6 +785,8 @@ void Application::CaptureActiveSceneCameraSet() {
     cameraSet_ = {};
     cameraFrameRenderer_.Invalidate();
     ClampCameraUiState(cameraUi_, 0);
+    cameraPathAnimator_.SetCameras(cameraSet_);
+    ClampAnimationUiState(animationUi_, 0);
     return;
   }
   StatusOr<CameraSet> cameras = ConvertInputCamerasToCameraSet(*activeScene);
@@ -757,6 +797,8 @@ void Application::CaptureActiveSceneCameraSet() {
   }
   cameraFrameRenderer_.Invalidate();
   ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
+  cameraPathAnimator_.SetCameras(cameraSet_);
+  ClampAnimationUiState(animationUi_, cameraSet_.cameras.size());
 }
 
 void Application::UpdateSelectedInputCamera() {
@@ -782,6 +824,9 @@ void Application::SelectCameraIndex(int32_t index) {
   cameraUi_.index = index;
   ClampCameraUiState(cameraUi_, cameraSet_.cameras.size());
   selectedInputCamera_ = cameraUi_.index;
+  animationUi_.time = static_cast<float>(selectedInputCamera_);
+  cameraPathAnimator_.SetTime(animationUi_.time);
+  StopAnimationOnCameraEdit(animationUi_, true);
 
   if (selectedInputCamera_ >= 0 && static_cast<size_t>(selectedInputCamera_) < cameraSet_.cameras.size()) {
     camera_.SnapToCameraParams(cameraSet_.cameras[static_cast<size_t>(selectedInputCamera_)]);
@@ -837,6 +882,7 @@ void Application::HandleDoubleClickFocus() {
   }
 
   if (bestT < std::numeric_limits<float>::max()) {
+    StopAnimationOnCameraEdit(animationUi_, true);
     camera_.FocusPoint(bestPoint, bestRadius * 2.0f);
     camera_.SetOrbitPivot(bestPoint);
   }

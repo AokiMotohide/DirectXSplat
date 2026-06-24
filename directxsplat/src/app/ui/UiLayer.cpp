@@ -56,6 +56,10 @@ std::array<const char*, 3> UiCameraLabels() {
   return {"Show camera frames", "frame size", "index"};
 }
 
+std::array<const char*, 2> UiAnimationLabels() {
+  return {"Animation", "fps"};
+}
+
 void ClampCameraUiState(CameraUiState& state, size_t cameraCount) {
   state.frameSize = std::clamp(state.frameSize, 0.001f, 10.0f);
   if (cameraCount == 0) {
@@ -659,7 +663,23 @@ void RenderCameraSection(UiFrameData& frame, UiActions& actions) {
   }
 }
 
-void RenderAnimationSection(UiFrameData&) {}
+void RenderAnimationSection(UiFrameData& frame) {
+  AnimationUiState localState{};
+  AnimationUiState& state = frame.animationUi != nullptr ? *frame.animationUi : localState;
+  ClampAnimationUiState(state, frame.cameraCount);
+
+  const auto labels = UiAnimationLabels();
+  const bool disabled = frame.cameraCount == 0;
+  if (disabled) {
+    ImGui::BeginDisabled();
+  }
+  ImGui::Checkbox("Animation##animation_enabled", &state.enabled);
+  ImGui::SliderFloat(labels[1], &state.fps, 1.0f, 30.0f, "%.2f");
+  ClampAnimationUiState(state, frame.cameraCount);
+  if (disabled) {
+    ImGui::EndDisabled();
+  }
+}
 
 void RenderPinnedStatsWindow(const UiFrameData& frame) {
   const auto labels = UiSectionLabels();
