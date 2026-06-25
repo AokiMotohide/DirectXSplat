@@ -692,13 +692,13 @@ void RenderLeftControlsWindow(UiFrameData& frame, UiActions& actions) {
                                  ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar |
                                  ImGuiWindowFlags_NoCollapse;
   if (ImGui::Begin("DirectXSplatControls", nullptr, flags)) {
-    if (ImGui::CollapsingHeader(labels[0], ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(labels[0])) {
       RenderGraphicSection(frame);
     }
-    if (ImGui::CollapsingHeader(labels[1], ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(labels[1])) {
       RenderSceneSection(frame, actions);
     }
-    if (ImGui::CollapsingHeader(labels[2], ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader(labels[2])) {
       RenderCameraSection(frame, actions);
     }
     if (ImGui::CollapsingHeader(labels[3])) {
