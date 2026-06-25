@@ -5,10 +5,10 @@
 #include <cstdint>
 #include <vector>
 
-#include "dxsplat/math.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/sort.h"
-#include "dxsplat/status.h"
+#include "directxsplat/math.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/sort.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat {
 

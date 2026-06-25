@@ -239,9 +239,9 @@ install(TARGETS directxsplat
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/dxsplat/directxsplat.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/dxsplat/status.h
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dxsplat
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/directxsplat/directxsplat.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/directxsplat/status.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/directxsplat
 )
 
 install(EXPORT DirectXSplatTargets

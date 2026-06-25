@@ -12,7 +12,7 @@
 
 #include "miniz.h"
 
-#include "dxsplat/bounding.h"
+#include "directxsplat/bounding.h"
 
 namespace directxsplat::io {
 

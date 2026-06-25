@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-#include "dxsplat/gpu_resources.h"
-#include "dxsplat/math.h"
+#include "directxsplat/gpu_resources.h"
+#include "directxsplat/math.h"
 
 namespace directxsplat {
 

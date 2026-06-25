@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <dxsplat/directxsplat.h>
+#include <directxsplat/directxsplat.h>
 
 TEST_CASE("ViewerConfig rejects zero dimensions") {
   directxsplat::ViewerConfig config{};

@@ -9,7 +9,7 @@
 
 #include <wrl/client.h>
 
-#include "dxsplat/status.h"
+#include "directxsplat/status.h"
 #include "GPUSorting/GPUSortingD3D12/GPUSorting.h"
 
 namespace directxsplat {

@@ -1,4 +1,4 @@
-#include "dxsplat/directxsplat.h"
+#include "directxsplat/directxsplat.h"
 
 #include <memory>
 #include <utility>

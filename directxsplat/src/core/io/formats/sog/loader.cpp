@@ -15,7 +15,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "dxsplat/bounding.h"
+#include "directxsplat/bounding.h"
 #include "io/common/string_util.h"
 #include "io/image/wic_image.h"
 #include "io/archive/zip_archive.h"

@@ -1,3 +1,3 @@
 #pragma once
 
-#include "dxsplat/sort.h"
+#include "directxsplat/sort.h"

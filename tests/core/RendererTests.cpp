@@ -16,16 +16,16 @@
 #include <sstream>
 #include <vector>
 
-#include "dxsplat/context.h"
-#include "dxsplat/extensions.h"
-#include "dxsplat/gpu_resources.h"
-#include "dxsplat/math.h"
-#include "dxsplat/render_hooks.h"
-#include "dxsplat/renderer.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/settings.h"
-#include "dxsplat/types.h"
-#include "dxsplat/vram_format.h"
+#include "directxsplat/context.h"
+#include "directxsplat/extensions.h"
+#include "directxsplat/gpu_resources.h"
+#include "directxsplat/math.h"
+#include "directxsplat/render_hooks.h"
+#include "directxsplat/renderer.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/settings.h"
+#include "directxsplat/types.h"
+#include "directxsplat/vram_format.h"
 #include "renderer/raster/GaussianRasterPipeline.h"
 
 namespace directxsplat {

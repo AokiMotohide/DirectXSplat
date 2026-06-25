@@ -1,4 +1,4 @@
-#include "dxsplat/directxsplat.h"
+#include "directxsplat/directxsplat.h"
 
 #include <algorithm>
 #include <array>
@@ -6,8 +6,8 @@
 #include <utility>
 
 #include "api/GaussianSplatsInternal.h"
-#include "dxsplat/bounding.h"
-#include "dxsplat/math.h"
+#include "directxsplat/bounding.h"
+#include "directxsplat/math.h"
 
 namespace directxsplat {
 

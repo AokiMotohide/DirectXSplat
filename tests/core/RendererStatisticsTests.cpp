@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "dxsplat/settings.h"
+#include "directxsplat/settings.h"
 
 TEST_CASE("Splat alpha histogram preserves projected frame bins") {
   directxsplat::FrameStats stats{};

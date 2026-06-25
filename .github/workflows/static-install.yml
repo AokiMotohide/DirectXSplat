@@ -56,7 +56,7 @@ jobs:
           target_link_libraries(consumer PRIVATE DirectXSplat::DirectXSplat)
           '@ | Set-Content -Path (Join-Path $consumer "CMakeLists.txt") -NoNewline
           @'
-          #include <dxsplat/directxsplat.h>
+          #include <directxsplat/directxsplat.h>
           int main() {
             directxsplat::ViewerConfig config{};
             config.width = 640;
@@ -133,8 +133,8 @@ jobs:
         run: |
           $prefix = "$env:RUNNER_TEMP/directxsplat-package"
           $required = @(
-            "include/dxsplat/directxsplat.h",
-            "include/dxsplat/status.h",
+            "include/directxsplat/directxsplat.h",
+            "include/directxsplat/status.h",
             "lib/cmake/DirectXSplat/DirectXSplatConfig.cmake",
             "lib/cmake/DirectXSplat/DirectXSplatConfigVersion.cmake",
             "lib/cmake/DirectXSplat/DirectXSplatTargets.cmake"
@@ -148,14 +148,14 @@ jobs:
             throw "Installed package did not contain DirectXSplat.lib"
           }
           $requiredHeaders = @(
-            "include/dxsplat/directxsplat.h",
-            "include/dxsplat/status.h"
+            "include/directxsplat/directxsplat.h",
+            "include/directxsplat/status.h"
           )
           $forbiddenHeaders = @(
-            "include/dxsplat/renderer.h",
-            "include/dxsplat/context.h",
-            "include/dxsplat/gpu_resources.h",
-            "include/dxsplat/io.h"
+            "include/directxsplat/renderer.h",
+            "include/directxsplat/context.h",
+            "include/directxsplat/gpu_resources.h",
+            "include/directxsplat/io.h"
           )
           $missingHeaders = $requiredHeaders | Where-Object { -not (Test-Path (Join-Path $prefix $_) -PathType Leaf) }
           if ($missingHeaders.Count -ne 0) {
@@ -165,7 +165,7 @@ jobs:
           if ($presentForbiddenHeaders.Count -ne 0) {
             throw "Installed package contains removed SDK headers: $($presentForbiddenHeaders -join ', ')"
           }
-          $installedHeaders = Get-ChildItem -Path (Join-Path $prefix "include/dxsplat") -Filter "*.h" -File | ForEach-Object { "include/dxsplat/$($_.Name)" }
+          $installedHeaders = Get-ChildItem -Path (Join-Path $prefix "include/directxsplat") -Filter "*.h" -File | ForEach-Object { "include/directxsplat/$($_.Name)" }
           $extraHeaders = $installedHeaders | Where-Object { $_ -notin $requiredHeaders }
           if ($extraHeaders.Count -ne 0) {
             throw "Installed package contains unexpected public headers: $($extraHeaders -join ', ')"

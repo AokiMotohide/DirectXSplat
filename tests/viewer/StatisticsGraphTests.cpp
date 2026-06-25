@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/settings.h"
+#include "directxsplat/settings.h"
 
 TEST_CASE("PushGraphSample wraps at capacity") {
   directxsplat::GraphSeries series{};

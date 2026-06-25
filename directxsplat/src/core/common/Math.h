@@ -1,3 +1,3 @@
 #pragma once
 
-#include "dxsplat/math.h"
+#include "directxsplat/math.h"

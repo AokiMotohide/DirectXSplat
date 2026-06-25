@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/io.h"
-#include "dxsplat/scene.h"
+#include "directxsplat/io.h"
+#include "directxsplat/scene.h"
 
 namespace directxsplat {
 namespace {

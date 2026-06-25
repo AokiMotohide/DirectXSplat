@@ -6,8 +6,8 @@ set(required_files
   CMakeLists.txt
   LICENSE
   README.md
-  directxsplat/include/dxsplat/directxsplat.h
-  directxsplat/include/dxsplat/status.h
+  directxsplat/include/directxsplat/directxsplat.h
+  directxsplat/include/directxsplat/status.h
   docs/migration-v0.2.md
   examples/CMakeLists.txt
   examples/basic_viewer/main.cpp
@@ -40,8 +40,8 @@ foreach(path IN LISTS required_dirs)
   endif()
 endforeach()
 
-file(GLOB public_headers RELATIVE "${DIRECTXSPLAT_ROOT_DIR}/directxsplat/include/dxsplat"
-  "${DIRECTXSPLAT_ROOT_DIR}/directxsplat/include/dxsplat/*.h"
+file(GLOB public_headers RELATIVE "${DIRECTXSPLAT_ROOT_DIR}/directxsplat/include/directxsplat"
+  "${DIRECTXSPLAT_ROOT_DIR}/directxsplat/include/directxsplat/*.h"
 )
 list(SORT public_headers)
 set(expected_headers
@@ -59,7 +59,7 @@ set(forbidden_public_headers
   renderer.h
 )
 foreach(header IN LISTS forbidden_public_headers)
-  if(EXISTS "${DIRECTXSPLAT_ROOT_DIR}/directxsplat/include/dxsplat/${header}")
+  if(EXISTS "${DIRECTXSPLAT_ROOT_DIR}/directxsplat/include/directxsplat/${header}")
     message(FATAL_ERROR "Removed SDK header is still public: ${header}")
   endif()
 endforeach()
@@ -72,10 +72,10 @@ set(example_sources
 set(forbidden_example_text
   "d3d12.h"
   "dxgi.h"
-  "dxsplat/renderer.h"
-  "dxsplat/context.h"
-  "dxsplat/gpu_resources.h"
-  "dxsplat/io.h"
+  "directxsplat/renderer.h"
+  "directxsplat/context.h"
+  "directxsplat/gpu_resources.h"
+  "directxsplat/io.h"
 )
 
 foreach(path IN LISTS example_sources)

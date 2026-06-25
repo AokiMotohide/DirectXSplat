@@ -5,11 +5,11 @@
 #include <cstdint>
 #include <vector>
 
-#include "dxsplat/directxsplat.h"
-#include "dxsplat/math.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/sort.h"
-#include "dxsplat/types.h"
+#include "directxsplat/directxsplat.h"
+#include "directxsplat/math.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/sort.h"
+#include "directxsplat/types.h"
 
 namespace directxsplat {
 

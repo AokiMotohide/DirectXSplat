@@ -1,4 +1,4 @@
-#include <dxsplat/directxsplat.h>
+#include <directxsplat/directxsplat.h>
 
 int main(int argc, char** argv) {
   if (argc != 3) {

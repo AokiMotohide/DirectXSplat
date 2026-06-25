@@ -8,8 +8,8 @@
 
 #include "app/CameraController.h"
 #include "app/CameraPathAnimator.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/settings.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/settings.h"
 #include "metrics/ImageMetrics.h"
 
 namespace directxsplat {

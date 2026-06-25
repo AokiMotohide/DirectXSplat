@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include <dxsplat/directxsplat.h>
+#include <directxsplat/directxsplat.h>
 
 TEST_CASE("GaussianSplats default object is empty") {
   directxsplat::GaussianSplats splats;

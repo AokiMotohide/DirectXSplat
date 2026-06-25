@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/directxsplat.h"
+#include "directxsplat/directxsplat.h"
 #include "tools/CliOptions.h"
 
 namespace {

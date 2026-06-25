@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "dxsplat/io.h"
+#include "directxsplat/io.h"
 
 namespace directxsplat::io {
 

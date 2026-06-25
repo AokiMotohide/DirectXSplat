@@ -1,4 +1,4 @@
-#include "dxsplat/directxsplat.h"
+#include "directxsplat/directxsplat.h"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <utility>
 
 #include "api/GaussianSplatsInternal.h"
-#include "dxsplat/io.h"
+#include "directxsplat/io.h"
 
 namespace directxsplat {
 

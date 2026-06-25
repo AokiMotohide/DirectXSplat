@@ -1,3 +1,3 @@
 #pragma once
 
-#include "dxsplat/scene.h"
+#include "directxsplat/scene.h"

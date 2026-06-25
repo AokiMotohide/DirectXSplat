@@ -7,9 +7,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "dxsplat/sort.h"
-#include "dxsplat/types.h"
-#include "dxsplat/vram_format.h"
+#include "directxsplat/sort.h"
+#include "directxsplat/types.h"
+#include "directxsplat/vram_format.h"
 
 namespace directxsplat {
 

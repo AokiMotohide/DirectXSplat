@@ -13,7 +13,7 @@
 #include <unordered_map>
 
 #include "io/formats/ply/raw/ply_reader.h"
-#include "dxsplat/bounding.h"
+#include "directxsplat/bounding.h"
 #include "io/common/string_util.h"
 
 namespace directxsplat::io {

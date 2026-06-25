@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "dxsplat/math.h"
+#include "directxsplat/math.h"
 
 namespace directxsplat {
 

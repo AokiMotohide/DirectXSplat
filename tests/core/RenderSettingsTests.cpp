@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-#include "dxsplat/settings.h"
+#include "directxsplat/settings.h"
 
 namespace directxsplat {
 namespace {

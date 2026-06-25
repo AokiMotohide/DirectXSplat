@@ -4,12 +4,12 @@
 
 #include <cstdint>
 
-#include "dxsplat/gpu_resources.h"
-#include "dxsplat/render_hooks.h"
-#include "dxsplat/settings.h"
-#include "dxsplat/sort.h"
-#include "dxsplat/status.h"
-#include "dxsplat/upscaling.h"
+#include "directxsplat/gpu_resources.h"
+#include "directxsplat/render_hooks.h"
+#include "directxsplat/settings.h"
+#include "directxsplat/sort.h"
+#include "directxsplat/status.h"
+#include "directxsplat/upscaling.h"
 
 namespace directxsplat {
 

@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-#include "dxsplat/bounding.h"
-#include "dxsplat/math.h"
-#include "dxsplat/status.h"
+#include "directxsplat/bounding.h"
+#include "directxsplat/math.h"
+#include "directxsplat/status.h"
 
 struct ID3D12Fence;
 

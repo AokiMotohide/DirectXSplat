@@ -14,12 +14,12 @@
 
 #include <wrl/client.h>
 
-#include "dxsplat/extensions.h"
-#include "dxsplat/gpu_resources.h"
-#include "dxsplat/renderer.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/settings.h"
-#include "dxsplat/status.h"
+#include "directxsplat/extensions.h"
+#include "directxsplat/gpu_resources.h"
+#include "directxsplat/renderer.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/settings.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat {
 

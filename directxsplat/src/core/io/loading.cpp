@@ -1,4 +1,4 @@
-#include "dxsplat/io.h"
+#include "directxsplat/io.h"
 
 #include <algorithm>
 #include <limits>

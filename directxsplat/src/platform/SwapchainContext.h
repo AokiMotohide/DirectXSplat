@@ -10,7 +10,7 @@
 
 #include <wrl/client.h>
 
-#include "dxsplat/status.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat::internal {
 

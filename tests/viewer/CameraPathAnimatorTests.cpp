@@ -4,7 +4,7 @@
 
 #include "api/CameraSetInternal.h"
 #include "app/CameraPathAnimator.h"
-#include "dxsplat/math.h"
+#include "directxsplat/math.h"
 
 namespace {
 

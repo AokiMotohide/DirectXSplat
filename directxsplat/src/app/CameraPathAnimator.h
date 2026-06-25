@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "app/CameraController.h"
-#include "dxsplat/directxsplat.h"
+#include "directxsplat/directxsplat.h"
 
 namespace directxsplat {
 

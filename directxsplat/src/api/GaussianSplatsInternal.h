@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include "dxsplat/directxsplat.h"
-#include "dxsplat/scene.h"
+#include "directxsplat/directxsplat.h"
+#include "directxsplat/scene.h"
 
 namespace directxsplat {
 

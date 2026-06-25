@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "dxsplat/bounding.h"
-#include "dxsplat/math.h"
-#include "dxsplat/scene.h"
+#include "directxsplat/bounding.h"
+#include "directxsplat/math.h"
+#include "directxsplat/scene.h"
 #include "renderer/diagnostics.h"
 
 namespace directxsplat {

@@ -8,8 +8,8 @@
 #include <sstream>
 #include <string>
 
-#include "dxsplat/settings.h"
-#include "dxsplat/vram_format.h"
+#include "directxsplat/settings.h"
+#include "directxsplat/vram_format.h"
 #include "renderer/diagnostics.h"
 
 namespace directxsplat {

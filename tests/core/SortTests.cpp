@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "dxsplat/math.h"
-#include "dxsplat/sort.h"
+#include "directxsplat/math.h"
+#include "directxsplat/sort.h"
 
 namespace directxsplat {
 namespace {

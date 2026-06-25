@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/renderer.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/status.h"
+#include "directxsplat/renderer.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat {
 

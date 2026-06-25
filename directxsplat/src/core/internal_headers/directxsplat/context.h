@@ -2,7 +2,7 @@
 
 #include <d3d12.h>
 
-#include "dxsplat/status.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat {
 

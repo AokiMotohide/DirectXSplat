@@ -3,10 +3,10 @@
 #include <array>
 #include <cstddef>
 
-#include "dxsplat/directxsplat.h"
-#include "dxsplat/math.h"
-#include "dxsplat/scene.h"
-#include "dxsplat/status.h"
+#include "directxsplat/directxsplat.h"
+#include "directxsplat/math.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat {
 

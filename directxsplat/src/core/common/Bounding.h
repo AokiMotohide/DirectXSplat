@@ -1,3 +1,3 @@
 #pragma once
 
-#include "dxsplat/bounding.h"
+#include "directxsplat/bounding.h"

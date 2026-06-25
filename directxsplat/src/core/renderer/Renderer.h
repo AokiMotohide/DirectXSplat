@@ -1,3 +1,3 @@
 #pragma once
 
-#include "dxsplat/renderer.h"
+#include "directxsplat/renderer.h"

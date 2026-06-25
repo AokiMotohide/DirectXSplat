@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/bounding.h"
-#include "dxsplat/math.h"
-#include "dxsplat/vram_format.h"
+#include "directxsplat/bounding.h"
+#include "directxsplat/math.h"
+#include "directxsplat/vram_format.h"
 
 namespace directxsplat {
 

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/status.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat::internal {
 

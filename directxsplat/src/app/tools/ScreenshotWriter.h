@@ -6,7 +6,7 @@
 #include <wrl/client.h>
 
 #include "platform/SwapchainContext.h"
-#include "dxsplat/status.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat {
 

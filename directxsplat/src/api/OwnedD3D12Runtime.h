@@ -7,11 +7,11 @@
 
 #include <cstdint>
 
-#include "dxsplat/context.h"
-#include "dxsplat/directxsplat.h"
-#include "dxsplat/gpu_resources.h"
-#include "dxsplat/renderer.h"
-#include "dxsplat/types.h"
+#include "directxsplat/context.h"
+#include "directxsplat/directxsplat.h"
+#include "directxsplat/gpu_resources.h"
+#include "directxsplat/renderer.h"
+#include "directxsplat/types.h"
 
 namespace directxsplat {
 

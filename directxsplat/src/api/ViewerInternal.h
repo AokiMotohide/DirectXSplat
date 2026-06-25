@@ -3,7 +3,7 @@
 #include <filesystem>
 
 #include "app/Application.h"
-#include "dxsplat/directxsplat.h"
+#include "directxsplat/directxsplat.h"
 
 namespace directxsplat {
 

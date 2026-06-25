@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "dxsplat/scene.h"
-#include "dxsplat/status.h"
+#include "directxsplat/scene.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat::io {
 

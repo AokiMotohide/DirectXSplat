@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "dxsplat/io.h"
-#include "dxsplat/scene.h"
+#include "directxsplat/io.h"
+#include "directxsplat/scene.h"
 #include "io/formats/ply/raw/ply_reader.h"
 #include "io/formats/ply/raw/ply_writer.h"
 #include "io/image/wic_image.h"

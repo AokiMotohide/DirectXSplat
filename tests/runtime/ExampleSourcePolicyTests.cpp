@@ -57,10 +57,10 @@ TEST_CASE("Examples include only the public header") {
   const std::vector<std::string> forbiddenText = {
       "d3d12.h",
       "dxgi.h",
-      "dxsplat/renderer.h",
-      "dxsplat/context.h",
-      "dxsplat/gpu_resources.h",
-      "dxsplat/io.h",
+      "directxsplat/renderer.h",
+      "directxsplat/context.h",
+      "directxsplat/gpu_resources.h",
+      "directxsplat/io.h",
   };
 
   for (const std::filesystem::path& path : sources) {
@@ -80,8 +80,8 @@ TEST_CASE("Examples include only the public header") {
       }
 
       CHECK(include.find("#include \"") == std::string::npos);
-      if (include.find("#include <dxsplat/") != std::string::npos) {
-        CHECK(include == "#include <dxsplat/directxsplat.h>");
+      if (include.find("#include <directxsplat/") != std::string::npos) {
+        CHECK(include == "#include <directxsplat/directxsplat.h>");
       } else if (include.starts_with("#include <")) {
         CHECK(include.find('/') == std::string::npos);
         CHECK_FALSE(include.ends_with(".h>"));

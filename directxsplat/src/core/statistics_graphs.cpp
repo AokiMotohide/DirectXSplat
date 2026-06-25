@@ -1,4 +1,4 @@
-#include "dxsplat/settings.h"
+#include "directxsplat/settings.h"
 
 #include <algorithm>
 #include <cmath>

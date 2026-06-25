@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "dxsplat/status.h"
+#include "directxsplat/status.h"
 
 namespace directxsplat::io {
 

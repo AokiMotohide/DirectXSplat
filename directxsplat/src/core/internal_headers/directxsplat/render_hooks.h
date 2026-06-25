@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <functional>
 
-#include "dxsplat/gpu_resources.h"
-#include "dxsplat/settings.h"
-#include "dxsplat/types.h"
+#include "directxsplat/gpu_resources.h"
+#include "directxsplat/settings.h"
+#include "directxsplat/types.h"
 
 namespace directxsplat {
 

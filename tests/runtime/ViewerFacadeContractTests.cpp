@@ -4,7 +4,7 @@
 #include <fstream>
 #include <string>
 
-#include <dxsplat/directxsplat.h>
+#include <directxsplat/directxsplat.h>
 
 namespace {
 
