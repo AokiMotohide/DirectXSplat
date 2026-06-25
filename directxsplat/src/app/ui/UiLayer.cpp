@@ -124,24 +124,6 @@ uint64_t TotalSplats(const UiFrameData& frame) {
 
 void RenderTraversalControls(UiFrameData& frame, UiActions& actions);
 
-void RenderActionButtons(UiActions& actions) {
-  if (ImGui::Button("open") && actions.openScene) {
-    actions.openScene();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("shot") && actions.saveScreenshot) {
-    actions.saveScreenshot();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("reset") && actions.resetView) {
-    actions.resetView();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("quit") && actions.exitApplication) {
-    actions.exitApplication();
-  }
-}
-
 float MaxGraphValue(const std::vector<float>& values) {
   float maxValue = 0.0f;
   for (float value : values) {
@@ -710,7 +692,6 @@ void RenderLeftControlsWindow(UiFrameData& frame, UiActions& actions) {
                                  ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoTitleBar |
                                  ImGuiWindowFlags_NoCollapse;
   if (ImGui::Begin("DirectXSplatControls", nullptr, flags)) {
-    RenderActionButtons(actions);
     if (ImGui::CollapsingHeader(labels[0], ImGuiTreeNodeFlags_DefaultOpen)) {
       RenderGraphicSection(frame);
     }

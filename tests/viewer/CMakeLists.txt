@@ -3,12 +3,11 @@ add_executable(DirectXSplatViewerTests
   CameraPathAnimatorTests.cpp
   CameraSetUiTests.cpp
   ImGuiViewerCoreTests.cpp
-  ScreenshotWriterTests.cpp
   StatisticsGraphTests.cpp
   UiLayerTests.cpp
+  ViewerTestMain.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/metrics/ImageMetrics.cpp
   ${PROJECT_SOURCE_DIR}/directxsplat/src/app/tools/CliOptions.cpp
-  ${PROJECT_SOURCE_DIR}/directxsplat/src/app/tools/ScreenshotWriter.cpp
 )
 
 target_include_directories(DirectXSplatViewerTests

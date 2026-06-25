@@ -15,12 +15,8 @@
 namespace directxsplat {
 
 struct UiActions {
-  std::function<void()> openScene;
-  std::function<void()> saveScreenshot;
   std::function<void()> nextScene;
   std::function<void()> prevScene;
-  std::function<void()> resetView;
-  std::function<void()> exitApplication;
   std::function<void(int32_t)> selectCamera;
 };
 

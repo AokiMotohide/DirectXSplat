@@ -16,7 +16,6 @@
 #include "platform/Win32Window.h"
 #include "render/CameraFrameRenderer.h"
 #include "scene/SceneManager.h"
-#include "tools/ScreenshotWriter.h"
 #include "ui/UiLayer.h"
 
 namespace directxsplat {
@@ -36,11 +35,6 @@ class Application {
   void Shutdown();
 
  private:
-  Status OpenSceneDialogAndLoad();
-  Status SaveScreenshotDialog();
-  Status SetExportDirectoryDialog();
-  Status CapturePointViewToExportDirectory();
-
   void UpdateInput(float dt);
   void UpdateAnimation(float dt);
   void UpdateBackgroundSceneLoading();
@@ -56,8 +50,6 @@ class Application {
   Status UploadAndAddScene(Scene scene);
   void DestroyUploadedScenes();
   Status ApplyPendingResize();
-
-  std::wstring OpenFileDialog(const wchar_t* filter, const wchar_t* title, bool saveMode);
 
   ViewerConfig config_;
 
@@ -93,16 +85,12 @@ class Application {
 
   UiLayer ui_;
 
-  ScreenshotWriter screenshotWriter_;
-
   bool imguiInitialized_ = false;
   std::string statusMessage_;
   bool traversalEnabled_ = false;
   bool traversalActivateRequested_ = false;
   size_t traversalRequestedIndex_ = 0;
   std::string traversalFolderPath_;
-  std::string exportDirectory_ = ".";
-  uint32_t captureIndex_ = 0;
   bool resizePending_ = false;
   uint32_t pendingResizeWidth_ = 0;
   uint32_t pendingResizeHeight_ = 0;

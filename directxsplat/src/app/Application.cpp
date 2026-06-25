@@ -1,15 +1,12 @@
 #include "app/Application.h"
 
 #include <Windows.h>
-#include <commdlg.h>
-#include <shlobj.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <limits>
-#include <sstream>
 #include <utility>
 
 #include <imgui.h>
@@ -360,10 +357,7 @@ Status Application::Run() {
     uiFrame.traversalCurrentIndex = traversalRequestedIndex_;
     uiFrame.statusMessage = statusMessage_;
 
-    bool openSceneAfterFrame = false;
     UiActions actions{};
-    actions.openScene = [&openSceneAfterFrame]() { openSceneAfterFrame = true; };
-    actions.saveScreenshot = [this]() { SaveScreenshotDialog(); };
     actions.nextScene = [this]() {
       StopAnimationOnCameraEdit(animationUi_, true);
       if (traversalEnabled_ && traversalLoader_.SceneCount() > 0) {
@@ -397,13 +391,6 @@ Status Application::Run() {
       UpdateSelectedInputCamera();
       ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
-    actions.resetView = [this]() {
-      StopAnimationOnCameraEdit(animationUi_, true);
-      if (sceneManager_.ActiveScene() != nullptr) {
-        ApplyInitialFraming(*sceneManager_.ActiveScene());
-      }
-    };
-    actions.exitApplication = [this]() { window_.RequestClose(); };
     actions.selectCamera = [this](int32_t index) { SelectCameraIndex(index); };
 
     if (guiVisible_) {
@@ -428,19 +415,6 @@ Status Application::Run() {
       window_.SetFullscreen(!window_.IsFullscreen());
     }
 
-    if (screenshotWriter_.HasPendingCapture()) {
-      std::string completedPath;
-      Status screenshotStatus = screenshotWriter_.ResolvePendingCapture(&completedPath);
-      if (!screenshotStatus.ok) {
-        statusMessage_ = screenshotStatus.message;
-      } else if (!completedPath.empty()) {
-        statusMessage_ = "Screenshot saved";
-      }
-    }
-
-    if (openSceneAfterFrame) {
-      OpenSceneDialogAndLoad();
-    }
   }
 
   return Status::Ok();
@@ -530,87 +504,6 @@ Status Application::SetCameraSet(CameraSet cameras) {
 }
 
 const CameraSet& Application::ActiveCameraSet() const { return cameraSet_; }
-
-Status Application::OpenSceneDialogAndLoad() {
-  const std::wstring file = OpenFileDialog(
-      L"Scene Files (*.ply;*.sog;*.spz;*.splat;meta.json;lod-meta.json)\0*.ply;*.sog;*.spz;*.splat;meta.json;lod-meta.json\0All Files\0*.*\0\0", L"Open Scene", false);
-  if (file.empty()) {
-    return Status::Ok();
-  }
-
-  const int bytes = WideCharToMultiByte(CP_UTF8, 0, file.c_str(), -1, nullptr, 0, nullptr, nullptr);
-  std::string utf8(static_cast<size_t>(bytes > 0 ? bytes - 1 : 0), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, file.c_str(), -1, utf8.data(), bytes, nullptr, nullptr);
-
-  Status status = Load(fs::path(utf8));
-  if (!status.ok) {
-    statusMessage_ = status.message;
-  }
-  return status;
-}
-
-Status Application::SaveScreenshotDialog() {
-  const std::wstring file = OpenFileDialog(L"PPM Files (*.ppm)\0*.ppm\0\0", L"Save Screenshot", true);
-  if (file.empty()) {
-    return Status::Ok();
-  }
-
-  const int bytes = WideCharToMultiByte(CP_UTF8, 0, file.c_str(), -1, nullptr, 0, nullptr, nullptr);
-  std::string utf8(static_cast<size_t>(bytes > 0 ? bytes - 1 : 0), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, file.c_str(), -1, utf8.data(), bytes, nullptr, nullptr);
-  if (fs::path(utf8).extension().empty()) {
-    utf8 += ".ppm";
-  }
-
-  Status status = screenshotWriter_.QueueBackBufferPpm(d3d_, utf8);
-  if (status.ok) {
-    statusMessage_ = "Screenshot queued";
-  } else {
-    statusMessage_ = status.message;
-  }
-  return status;
-}
-
-Status Application::SetExportDirectoryDialog() {
-  BROWSEINFOW bi{};
-  bi.hwndOwner = window_.Hwnd();
-  bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-  bi.lpszTitle = L"Set export directory";
-  PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
-  if (pidl == nullptr) {
-    return Status::Ok();
-  }
-  wchar_t path[MAX_PATH] = {};
-  const BOOL ok = SHGetPathFromIDListW(pidl, path);
-  CoTaskMemFree(pidl);
-  if (!ok) {
-    statusMessage_ = "Failed to set export directory";
-    return Status::Error(statusMessage_);
-  }
-  const int bytes = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
-  std::string utf8(static_cast<size_t>(bytes > 0 ? bytes - 1 : 0), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, path, -1, utf8.data(), bytes, nullptr, nullptr);
-  exportDirectory_ = utf8;
-  statusMessage_ = "Export directory set";
-  return Status::Ok();
-}
-
-Status Application::CapturePointViewToExportDirectory() {
-  fs::path dir(exportDirectory_.empty() ? "." : exportDirectory_);
-  if (!fs::exists(dir)) {
-    fs::create_directories(dir);
-  }
-  std::ostringstream name;
-  name << "point_view_" << std::setw(4) << std::setfill('0') << captureIndex_++ << ".ppm";
-  const std::string path = (dir / name.str()).string();
-  Status status = screenshotWriter_.QueueBackBufferPpm(d3d_, path);
-  if (status.ok) {
-    statusMessage_ = "Capture queued";
-  } else {
-    statusMessage_ = status.message;
-  }
-  return status;
-}
 
 void Application::UpdateInput(float dt) {
   ImGuiIO& io = ImGui::GetIO();
@@ -965,32 +858,6 @@ size_t Application::FindLoadedSceneIndexByPath(const std::string& path) const {
     }
   }
   return std::numeric_limits<size_t>::max();
-}
-
-std::wstring Application::OpenFileDialog(const wchar_t* filter, const wchar_t* title, bool saveMode) {
-  wchar_t fileName[MAX_PATH] = {};
-
-  OPENFILENAMEW ofn{};
-  ofn.lStructSize = sizeof(ofn);
-  ofn.hwndOwner = window_.Hwnd();
-  ofn.lpstrFilter = filter;
-  ofn.lpstrFile = fileName;
-  ofn.nMaxFile = MAX_PATH;
-  ofn.lpstrTitle = title;
-  ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-
-  if (saveMode) {
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
-    if (GetSaveFileNameW(&ofn)) {
-      return fileName;
-    }
-  } else {
-    if (GetOpenFileNameW(&ofn)) {
-      return fileName;
-    }
-  }
-
-  return {};
 }
 
 }  // namespace directxsplat
