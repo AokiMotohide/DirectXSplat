@@ -5,7 +5,7 @@
 #include "dxsplat/scene.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 class SplatLoader {
  public:

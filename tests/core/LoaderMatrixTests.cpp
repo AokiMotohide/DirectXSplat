@@ -16,7 +16,7 @@
 #include "io/formats/ply/raw/ply_writer.h"
 #include "io/image/wic_image.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 constexpr float kShC0 = 0.28209479177387814f;
@@ -372,4 +372,4 @@ TEST_CASE("WIC file decoder returns StatusOr errors for hostile paths") {
   CHECK_FALSE(decoded.ok());
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

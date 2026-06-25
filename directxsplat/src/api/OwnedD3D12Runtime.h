@@ -13,7 +13,7 @@
 #include "dxsplat/renderer.h"
 #include "dxsplat/types.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class OwnedD3D12Runtime {
  public:
@@ -60,4 +60,4 @@ class OwnedD3D12Runtime {
   D3D12_RESOURCE_STATES colorState_ = D3D12_RESOURCE_STATE_COMMON;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

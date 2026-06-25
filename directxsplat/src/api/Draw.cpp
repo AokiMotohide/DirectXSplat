@@ -6,7 +6,7 @@
 #include "api/CameraSetInternal.h"
 #include "api/OwnedD3D12Runtime.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -48,4 +48,4 @@ StatusOr<ImageRgba8> Draw(const GaussianSplats& splats, const CameraParams& came
   return runtime.Draw(splats, camera, options);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

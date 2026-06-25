@@ -13,7 +13,7 @@
 #include "dxsplat/status.h"
 #include "dxsplat/types.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct RendererConfig {
   uint64_t defaultSplatBudget = 0;
@@ -98,4 +98,4 @@ class Renderer {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

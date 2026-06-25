@@ -9,7 +9,7 @@
 #include "dxsplat/math.h"
 #include "dxsplat/vram_format.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 constexpr uint32_t kShOrder3CoeffCountPerChannel = 16;
 constexpr uint32_t kShOrder3CoeffCountTotal = kShOrder3CoeffCountPerChannel * 3;
@@ -61,4 +61,4 @@ struct Scene {
   VramFormatSettings vramFormat{};
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

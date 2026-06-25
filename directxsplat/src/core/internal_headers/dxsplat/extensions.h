@@ -11,7 +11,7 @@
 #include "dxsplat/status.h"
 #include "dxsplat/upscaling.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class SortBufferSelection {
   Primary,
@@ -79,4 +79,4 @@ struct RenderResult {
   bool hasUpscalerInput = false;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

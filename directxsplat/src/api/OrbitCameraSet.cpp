@@ -9,7 +9,7 @@
 #include "dxsplat/bounding.h"
 #include "dxsplat/math.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -82,4 +82,4 @@ CameraSet MakeOrbitCameraSet(const GaussianSplats& splats, uint32_t count, uint3
   return out;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

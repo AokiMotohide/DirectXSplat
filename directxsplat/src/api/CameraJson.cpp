@@ -12,7 +12,7 @@
 
 #include "api/CameraSetInternal.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -48,14 +48,22 @@ Status ValidateLoadedCameraParams(const CameraParams& camera) {
 
 std::string ReadCameraName(const Json& item) {
   const auto it = item.find("name");
-  if (it == item.end() || !it->is_string()) {
-    return "camera";
+  if (it != item.end() && it->is_string()) {
+    const std::string& value = it->get_ref<const std::string&>();
+    if (value.size() <= kMaxCameraStringBytes) {
+      return value;
+    }
   }
-  const std::string& value = it->get_ref<const std::string&>();
-  if (value.size() > kMaxCameraStringBytes) {
-    return "camera";
+
+  const auto imageIt = item.find("img_name");
+  if (imageIt != item.end() && imageIt->is_string()) {
+    const std::string& value = imageIt->get_ref<const std::string&>();
+    if (value.size() <= kMaxCameraStringBytes) {
+      return value;
+    }
   }
-  return value;
+
+  return "camera";
 }
 
 bool ReadVec3(const Json& item, const char* name, Vec3& out) {
@@ -132,6 +140,55 @@ StatusOr<CameraParams> ParseMatrixCamera(const Json& item) {
   return StatusOr<CameraParams>::Ok(std::move(camera));
 }
 
+StatusOr<CameraParams> ParsePositionMatrixCamera(const Json& item) {
+  Vec3 position{};
+  if (!item.contains("position") || !ReadVec3(item, "position", position)) {
+    return StatusOr<CameraParams>::Error("invalid camera json");
+  }
+
+  auto rotation = ReadMatrix<3, 3>(item, "rotation");
+  if (!rotation.ok()) {
+    return StatusOr<CameraParams>::Error(rotation.status.message);
+  }
+
+  const uint32_t width = item.value("width", 0u);
+  const uint32_t height = item.value("height", 0u);
+  if (width == 0 || height == 0) {
+    return StatusOr<CameraParams>::Error("invalid camera dimensions");
+  }
+
+  const float fx = item.value("fx", 0.0f);
+  const float fy = item.value("fy", 0.0f);
+  const float cx = item.value("cx", static_cast<float>(width) * 0.5f);
+  const float cy = item.value("cy", static_cast<float>(height) * 0.5f);
+  if (!IsFinite(fx) || !IsFinite(fy) || !IsFinite(cx) || !IsFinite(cy) || fx <= 0.0f || fy <= 0.0f) {
+    return StatusOr<CameraParams>::Error("invalid camera intrinsic");
+  }
+
+  const auto& r = rotation.value;
+  CameraParams camera{};
+  camera.name = ReadCameraName(item);
+  camera.width = width;
+  camera.height = height;
+  camera.extrinsic = {
+      r[0], r[3], r[6], -(r[0] * position.x + r[3] * position.y + r[6] * position.z),
+      r[1], r[4], r[7], -(r[1] * position.x + r[4] * position.y + r[7] * position.z),
+      r[2], r[5], r[8], -(r[2] * position.x + r[5] * position.y + r[8] * position.z),
+      0.0f, 0.0f, 0.0f, 1.0f,
+  };
+  camera.intrinsic = {
+      fx, 0.0f, cx,
+      0.0f, fy, cy,
+      0.0f, 0.0f, 1.0f,
+  };
+
+  Status validation = ValidateLoadedCameraParams(camera);
+  if (!validation.ok) {
+    return StatusOr<CameraParams>::Error(validation.message);
+  }
+  return StatusOr<CameraParams>::Ok(std::move(camera));
+}
+
 StatusOr<CameraParams> ParseDirectXSplatCamera(const Json& item) {
   InputCamera input{};
   input.name = ReadCameraName(item);
@@ -178,7 +235,10 @@ StatusOr<CameraSet> LoadCameraSet(const std::filesystem::path& cameraJsonPath) {
       }
 
       const bool matrixCamera = item.contains("extrinsic") || item.contains("intrinsic");
-      StatusOr<CameraParams> camera = matrixCamera ? ParseMatrixCamera(item) : ParseDirectXSplatCamera(item);
+      const bool positionMatrixCamera = item.contains("fx") || item.contains("fy");
+      StatusOr<CameraParams> camera = matrixCamera ? ParseMatrixCamera(item)
+                                      : positionMatrixCamera ? ParsePositionMatrixCamera(item)
+                                                             : ParseDirectXSplatCamera(item);
       if (!camera.ok()) {
         return StatusOr<CameraSet>::Error(camera.status.message);
       }
@@ -191,4 +251,4 @@ StatusOr<CameraSet> LoadCameraSet(const std::filesystem::path& cameraJsonPath) {
   return StatusOr<CameraSet>::Ok(std::move(out));
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

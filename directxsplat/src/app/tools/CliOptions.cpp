@@ -2,7 +2,7 @@
 
 #include <charconv>
 
-namespace dxsplat::internal {
+namespace directxsplat::internal {
 
 namespace {
 
@@ -72,4 +72,4 @@ StatusOr<CliOptions> ParseCliOptions(const std::vector<std::string>& args) {
   return StatusOr<CliOptions>::Ok(std::move(out));
 }
 
-}  // namespace dxsplat::internal
+}  // namespace directxsplat::internal

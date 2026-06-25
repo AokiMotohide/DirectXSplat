@@ -6,7 +6,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 struct DecodedImage {
   uint32_t width = 0;

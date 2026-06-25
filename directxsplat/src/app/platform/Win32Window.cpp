@@ -12,7 +12,7 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace fs = std::filesystem;
 constexpr UINT kDragQueryFileCount = 0xFFFFFFFFu;
@@ -250,4 +250,4 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
   return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

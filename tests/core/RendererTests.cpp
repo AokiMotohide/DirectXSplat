@@ -28,7 +28,7 @@
 #include "dxsplat/vram_format.h"
 #include "renderer/raster/GaussianRasterPipeline.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -1076,4 +1076,4 @@ TEST_CASE("Renderer initializes, uploads a tiny scene, and renders offscreen") {
   CHECK(CountNonZeroPixels(pixels) > 0u);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

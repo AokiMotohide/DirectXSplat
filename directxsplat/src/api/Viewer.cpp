@@ -6,7 +6,7 @@
 #include "api/GaussianSplatsInternal.h"
 #include "api/ViewerInternal.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 Status Viewer::Impl::Initialize(const ViewerConfig& config) {
   if (config.width == 0) {
@@ -157,4 +157,4 @@ Status Show(const GaussianSplats& splats, const CameraSet& cameras, const Viewer
   return viewer.Run();
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

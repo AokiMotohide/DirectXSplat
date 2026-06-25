@@ -5,7 +5,7 @@
 #include "dxsplat/gpu_resources.h"
 #include "dxsplat/math.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct UpscalerInput {
   GpuTextureView color{};
@@ -21,4 +21,4 @@ struct UpscalerInput {
   bool cameraCut = false;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

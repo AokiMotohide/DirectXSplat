@@ -8,7 +8,7 @@
 #include "dxsplat/math.h"
 #include "dxsplat/scene.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class NavigatorMode {
   Fps,
@@ -87,4 +87,4 @@ class CameraController {
   void ClampPitch();
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

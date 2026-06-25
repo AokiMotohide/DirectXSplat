@@ -7,7 +7,7 @@
 
 #include "dxsplat/settings.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 std::string ReadTextFile(const std::filesystem::path& path) {
@@ -57,4 +57,4 @@ TEST_CASE("Shaders expose render settings constants") {
   CHECK(raster.find("gShadingDegree") != std::string::npos);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

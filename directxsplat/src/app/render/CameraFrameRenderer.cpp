@@ -10,7 +10,7 @@
 #include <string>
 #include <utility>
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -520,4 +520,4 @@ Status CameraFrameRenderer::Render(ID3D12GraphicsCommandList* commandList,
   return Status::Ok();
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

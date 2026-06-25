@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct InputState {
   std::array<bool, 256> keysDown{};
@@ -30,4 +30,4 @@ struct InputState {
   bool KeyDown(uint32_t vk) const { return vk < keysDown.size() ? keysDown[vk] : false; }
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

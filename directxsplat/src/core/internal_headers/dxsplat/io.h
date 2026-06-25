@@ -13,7 +13,7 @@
 #include "dxsplat/scene.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class SceneFormat {
   Unknown,

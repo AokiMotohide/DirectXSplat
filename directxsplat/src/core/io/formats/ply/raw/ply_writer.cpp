@@ -2,7 +2,7 @@
 
 #include <fstream>
 
-namespace dxsplat::io::ply {
+namespace directxsplat::io::ply {
 
 Status WritePlyAscii(const PlyFile& file, const std::string& path) {
   std::ofstream out(path);

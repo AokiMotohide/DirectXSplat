@@ -5,7 +5,7 @@
 
 #include <d3d12sdklayers.h>
 
-namespace dxsplat::internal {
+namespace directxsplat::internal {
 
 namespace {
 
@@ -47,17 +47,17 @@ constexpr DWORD kFenceWaitPollMs = 50;
 
 }
 
-dxsplat::Status SwapchainContext::Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer) {
+directxsplat::Status SwapchainContext::Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer) {
   hwnd_ = hwnd;
   width_ = std::max(width, 1u);
   height_ = std::max(height, 1u);
   queueLost_ = false;
-  auto fail = [&](dxsplat::Status status) {
+  auto fail = [&](directxsplat::Status status) {
     (void)Shutdown();
     return status;
   };
 
-  dxsplat::Status status = CreateDeviceAndSwapchain(enableDebugLayer);
+  directxsplat::Status status = CreateDeviceAndSwapchain(enableDebugLayer);
   if (!status.ok) {
     return fail(status);
   }
@@ -74,18 +74,18 @@ dxsplat::Status SwapchainContext::Initialize(HWND hwnd, uint32_t width, uint32_t
 
   HRESULT hr = device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence_.GetAddressOf()));
   if (FAILED(hr)) {
-    return fail(dxsplat::Status::Error("CreateFence failed"));
+    return fail(directxsplat::Status::Error("CreateFence failed"));
   }
   fenceEvent_ = CreateEvent(nullptr, FALSE, FALSE, nullptr);
   if (fenceEvent_ == nullptr) {
-    return fail(dxsplat::Status::Error("CreateEvent failed"));
+    return fail(directxsplat::Status::Error("CreateEvent failed"));
   }
 
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::Shutdown() {
-  dxsplat::Status idle = WaitForGpu();
+directxsplat::Status SwapchainContext::Shutdown() {
+  directxsplat::Status idle = WaitForGpu();
   if (fenceEvent_ != nullptr) {
     CloseHandle(fenceEvent_);
     fenceEvent_ = nullptr;
@@ -110,7 +110,7 @@ dxsplat::Status SwapchainContext::Shutdown() {
   return idle;
 }
 
-dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer) {
+directxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer) {
   bool debugLayerEnabled = false;
   if (enableDebugLayer) {
     ComPtr<ID3D12Debug> debug;
@@ -133,7 +133,7 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
     }
   }
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateDXGIFactory2 failed");
+    return directxsplat::Status::Error("CreateDXGIFactory2 failed");
   }
 
   for (UINT index = 0;; ++index) {
@@ -157,13 +157,13 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
     ComPtr<IDXGIAdapter1> warp;
     hr = factory_->EnumWarpAdapter(IID_PPV_ARGS(warp.GetAddressOf()));
     if (FAILED(hr)) {
-      return dxsplat::Status::Error("failed to get WARP adapter");
+      return directxsplat::Status::Error("failed to get WARP adapter");
     }
     DXGI_ADAPTER_DESC1 desc{};
     warp->GetDesc1(&desc);
     hr = D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(device_.GetAddressOf()));
     if (FAILED(hr)) {
-      return dxsplat::Status::Error("D3D12CreateDevice failed");
+      return directxsplat::Status::Error("D3D12CreateDevice failed");
     }
     adapter_ = warp;
     adapterName_ = WideToUtf8(desc.Description);
@@ -173,7 +173,7 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
   queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   hr = device_->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(queue_.GetAddressOf()));
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateCommandQueue failed");
+    return directxsplat::Status::Error("CreateCommandQueue failed");
   }
 
   BOOL allowTearing = FALSE;
@@ -197,22 +197,22 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
   ComPtr<IDXGISwapChain1> swapchain1;
   hr = factory_->CreateSwapChainForHwnd(queue_.Get(), hwnd_, &swapDesc, nullptr, nullptr, swapchain1.GetAddressOf());
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateSwapChainForHwnd failed");
+    return directxsplat::Status::Error("CreateSwapChainForHwnd failed");
   }
 
   hr = swapchain1.As(&swapchain_);
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("swapchain cast failed");
+    return directxsplat::Status::Error("swapchain cast failed");
   }
 
   frameIndex_ = swapchain_->GetCurrentBackBufferIndex();
   hr = swapchain_->SetMaximumFrameLatency(1);
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("SetMaximumFrameLatency failed");
+    return directxsplat::Status::Error("SetMaximumFrameLatency failed");
   }
   frameLatencyWaitableObject_ = swapchain_->GetFrameLatencyWaitableObject();
   if (frameLatencyWaitableObject_ == nullptr) {
-    return dxsplat::Status::Error("GetFrameLatencyWaitableObject failed");
+    return directxsplat::Status::Error("GetFrameLatencyWaitableObject failed");
   }
 
   D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{};
@@ -220,7 +220,7 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
   rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
   hr = device_->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(rtvHeap_.GetAddressOf()));
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateDescriptorHeap RTV failed");
+    return directxsplat::Status::Error("CreateDescriptorHeap RTV failed");
   }
 
   rtvDescriptorSize_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -228,32 +228,32 @@ dxsplat::Status SwapchainContext::CreateDeviceAndSwapchain(bool enableDebugLayer
   ComPtr<ID3D12CommandAllocator> bootstrapAllocator;
   hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(bootstrapAllocator.GetAddressOf()));
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateCommandAllocator bootstrap failed");
+    return directxsplat::Status::Error("CreateCommandAllocator bootstrap failed");
   }
 
   hr = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, bootstrapAllocator.Get(), nullptr,
                                   IID_PPV_ARGS(commandList_.GetAddressOf()));
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateCommandList failed");
+    return directxsplat::Status::Error("CreateCommandList failed");
   }
   hr = commandList_->Close();
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("command list close failed");
+    return directxsplat::Status::Error("command list close failed");
   }
 
   factory_->MakeWindowAssociation(hwnd_, DXGI_MWA_NO_ALT_ENTER);
 
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::CreateFrameResources() {
+directxsplat::Status SwapchainContext::CreateFrameResources() {
   D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap_->GetCPUDescriptorHandleForHeapStart();
 
   for (uint32_t i = 0; i < kFrameCount; ++i) {
     auto& frame = frames_[i];
     HRESULT hr = swapchain_->GetBuffer(i, IID_PPV_ARGS(frame.backBuffer.GetAddressOf()));
     if (FAILED(hr)) {
-      return dxsplat::Status::Error("GetBuffer failed");
+      return directxsplat::Status::Error("GetBuffer failed");
     }
     device_->CreateRenderTargetView(frame.backBuffer.Get(), nullptr, rtvHandle);
     frame.rtv = rtvHandle;
@@ -262,34 +262,34 @@ dxsplat::Status SwapchainContext::CreateFrameResources() {
 
     hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(frame.allocator.GetAddressOf()));
     if (FAILED(hr)) {
-      return dxsplat::Status::Error("CreateCommandAllocator failed");
+      return directxsplat::Status::Error("CreateCommandAllocator failed");
     }
 
     rtvHandle.ptr += rtvDescriptorSize_;
   }
 
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::CreateImGuiHeap() {
+directxsplat::Status SwapchainContext::CreateImGuiHeap() {
   D3D12_DESCRIPTOR_HEAP_DESC desc{};
   desc.NumDescriptors = 2048;
   desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
   desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   HRESULT hr = device_->CreateDescriptorHeap(&desc, IID_PPV_ARGS(imguiSrvHeap_.GetAddressOf()));
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("CreateDescriptorHeap imgui failed");
+    return directxsplat::Status::Error("CreateDescriptorHeap imgui failed");
   }
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::Resize(uint32_t width, uint32_t height) {
+directxsplat::Status SwapchainContext::Resize(uint32_t width, uint32_t height) {
   if (device_ == nullptr || swapchain_ == nullptr) {
-    return dxsplat::Status::Error("swapchain is not initialized");
+    return directxsplat::Status::Error("swapchain is not initialized");
   }
   width_ = std::max(width, 1u);
   height_ = std::max(height, 1u);
-  dxsplat::Status idle = WaitForGpu();
+  directxsplat::Status idle = WaitForGpu();
   if (!idle.ok) {
     return idle;
   }
@@ -304,26 +304,26 @@ dxsplat::Status SwapchainContext::Resize(uint32_t width, uint32_t height) {
   HRESULT hr = swapchain_->ResizeBuffers(kFrameCount, width_, height_, desc.BufferDesc.Format, desc.Flags);
   if (FAILED(hr)) {
     queueLost_ = true;
-    return dxsplat::Status::Error("ResizeBuffers failed");
+    return directxsplat::Status::Error("ResizeBuffers failed");
   }
 
   frameIndex_ = swapchain_->GetCurrentBackBufferIndex();
-  dxsplat::Status created = CreateFrameResources();
+  directxsplat::Status created = CreateFrameResources();
   if (!created.ok) {
     queueLost_ = true;
   }
   return created;
 }
 
-dxsplat::Status SwapchainContext::BeginFrame(bool waitForFrameLatency) {
+directxsplat::Status SwapchainContext::BeginFrame(bool waitForFrameLatency) {
   if (queueLost_) {
-    return dxsplat::Status::Error("direct queue is lost");
+    return directxsplat::Status::Error("direct queue is lost");
   }
   if (swapchain_ == nullptr || commandList_ == nullptr || fence_ == nullptr || fenceEvent_ == nullptr) {
-    return dxsplat::Status::Error("swapchain is not initialized");
+    return directxsplat::Status::Error("swapchain is not initialized");
   }
   if (waitForFrameLatency) {
-    dxsplat::Status latency = WaitForFrameLatency();
+    directxsplat::Status latency = WaitForFrameLatency();
     if (!latency.ok) {
       return latency;
     }
@@ -332,11 +332,11 @@ dxsplat::Status SwapchainContext::BeginFrame(bool waitForFrameLatency) {
   Frame& frame = frames_[frameIndex_];
   if (frame.allocator == nullptr || frame.backBuffer == nullptr) {
     queueLost_ = true;
-    return dxsplat::Status::Error("swapchain frame resources are invalid");
+    return directxsplat::Status::Error("swapchain frame resources are invalid");
   }
 
   if (frame.fenceValue != 0) {
-    dxsplat::Status waited = WaitForFenceValue(frame.fenceValue);
+    directxsplat::Status waited = WaitForFenceValue(frame.fenceValue);
     if (!waited.ok) {
       return waited;
     }
@@ -345,12 +345,12 @@ dxsplat::Status SwapchainContext::BeginFrame(bool waitForFrameLatency) {
 
   HRESULT hr = frame.allocator->Reset();
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("allocator reset failed");
+    return directxsplat::Status::Error("allocator reset failed");
   }
 
   hr = commandList_->Reset(frame.allocator.Get(), nullptr);
   if (FAILED(hr)) {
-    return dxsplat::Status::Error("command list reset failed");
+    return directxsplat::Status::Error("command list reset failed");
   }
 
   D3D12_RESOURCE_BARRIER barrier{};
@@ -370,15 +370,15 @@ dxsplat::Status SwapchainContext::BeginFrame(bool waitForFrameLatency) {
   commandList_->RSSetViewports(1, &vp);
   commandList_->RSSetScissorRects(1, &sc);
 
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::EndFrame(bool vsync) {
+directxsplat::Status SwapchainContext::EndFrame(bool vsync) {
   if (queueLost_) {
-    return dxsplat::Status::Error("direct queue is lost");
+    return directxsplat::Status::Error("direct queue is lost");
   }
   if (swapchain_ == nullptr || queue_ == nullptr || commandList_ == nullptr || fence_ == nullptr) {
-    return dxsplat::Status::Error("swapchain is not initialized");
+    return directxsplat::Status::Error("swapchain is not initialized");
   }
   Frame& frame = frames_[frameIndex_];
 
@@ -393,17 +393,17 @@ dxsplat::Status SwapchainContext::EndFrame(bool vsync) {
   HRESULT hr = commandList_->Close();
   if (FAILED(hr)) {
     const std::string closeError = "command list close failed " + HrString(hr) + DebugMessages();
-    dxsplat::Status signaled = SignalFrame(frame);
+    directxsplat::Status signaled = SignalFrame(frame);
     if (!signaled.ok) {
       return signaled;
     }
-    return dxsplat::Status::Error(closeError);
+    return directxsplat::Status::Error(closeError);
   }
 
   ID3D12CommandList* lists[] = {commandList_.Get()};
   queue_->ExecuteCommandLists(1, lists);
 
-  dxsplat::Status signaled = SignalFrame(frame);
+  directxsplat::Status signaled = SignalFrame(frame);
   if (!signaled.ok) {
     return signaled;
   }
@@ -415,94 +415,94 @@ dxsplat::Status SwapchainContext::EndFrame(bool vsync) {
     if (IsDeviceRemovalFailure(hr) || IsDeviceRemovalFailure(removed)) {
       queueLost_ = true;
     }
-    return dxsplat::Status::Error("Present failed " + HrString(hr) + " removed=" + HrString(removed) + DebugMessages());
+    return directxsplat::Status::Error("Present failed " + HrString(hr) + " removed=" + HrString(removed) + DebugMessages());
   }
 
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::SignalFrame(Frame& frame) {
+directxsplat::Status SwapchainContext::SignalFrame(Frame& frame) {
   const uint64_t signal = fenceValue_ + 1;
   HRESULT hr = queue_->Signal(fence_.Get(), signal);
   if (FAILED(hr)) {
     queueLost_ = true;
-    return dxsplat::Status::Error("queue signal failed " + HrString(hr) + DebugMessages());
+    return directxsplat::Status::Error("queue signal failed " + HrString(hr) + DebugMessages());
   }
   fenceValue_ = signal;
   frame.fenceValue = signal;
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::WaitForFrameLatency() {
+directxsplat::Status SwapchainContext::WaitForFrameLatency() {
   if (frameLatencyWaitableObject_ == nullptr) {
-    return dxsplat::Status::Error("frame latency waitable object is not initialized");
+    return directxsplat::Status::Error("frame latency waitable object is not initialized");
   }
   for (;;) {
     const DWORD wait = WaitForSingleObject(frameLatencyWaitableObject_, kFenceWaitPollMs);
     if (wait == WAIT_OBJECT_0) {
-      return dxsplat::Status::Ok();
+      return directxsplat::Status::Ok();
     }
     if (wait != WAIT_TIMEOUT) {
       queueLost_ = true;
-      return dxsplat::Status::Error("frame latency wait failed");
+      return directxsplat::Status::Error("frame latency wait failed");
     }
-    dxsplat::Status deviceStatus = CheckDeviceRemoved();
+    directxsplat::Status deviceStatus = CheckDeviceRemoved();
     if (!deviceStatus.ok) {
       return deviceStatus;
     }
   }
 }
 
-dxsplat::Status SwapchainContext::WaitForGpu() {
+directxsplat::Status SwapchainContext::WaitForGpu() {
   if (queueLost_) {
-    return dxsplat::Status::Error("direct queue is lost");
+    return directxsplat::Status::Error("direct queue is lost");
   }
   if (queue_ == nullptr || fence_ == nullptr || fenceEvent_ == nullptr) {
-    return dxsplat::Status::Ok();
+    return directxsplat::Status::Ok();
   }
   const uint64_t signal = fenceValue_ + 1;
   HRESULT hr = queue_->Signal(fence_.Get(), signal);
   if (FAILED(hr)) {
     queueLost_ = true;
-    return dxsplat::Status::Error("queue signal failed " + HrString(hr) + DebugMessages());
+    return directxsplat::Status::Error("queue signal failed " + HrString(hr) + DebugMessages());
   }
   fenceValue_ = signal;
-  dxsplat::Status waited = WaitForFenceValue(signal);
+  directxsplat::Status waited = WaitForFenceValue(signal);
   if (!waited.ok) {
     return waited;
   }
   for (Frame& frame : frames_) {
     frame.fenceValue = 0;
   }
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
 void SwapchainContext::NotifyQueueLost() {
   queueLost_ = true;
 }
 
-dxsplat::Status SwapchainContext::CheckDeviceRemoved() {
+directxsplat::Status SwapchainContext::CheckDeviceRemoved() {
   if (queueLost_) {
-    return dxsplat::Status::Error("direct queue is lost");
+    return directxsplat::Status::Error("direct queue is lost");
   }
   if (device_ != nullptr) {
     const HRESULT removed = device_->GetDeviceRemovedReason();
     if (IsDeviceRemovalFailure(removed)) {
       queueLost_ = true;
-      return dxsplat::Status::Error("direct queue is lost");
+      return directxsplat::Status::Error("direct queue is lost");
     }
   }
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
-dxsplat::Status SwapchainContext::WaitForFenceValue(uint64_t value) {
+directxsplat::Status SwapchainContext::WaitForFenceValue(uint64_t value) {
   if (fence_ == nullptr || fenceEvent_ == nullptr) {
-    return dxsplat::Status::Error("swapchain fence is not initialized");
+    return directxsplat::Status::Error("swapchain fence is not initialized");
   }
   if (value == 0 || fence_->GetCompletedValue() >= value) {
-    return dxsplat::Status::Ok();
+    return directxsplat::Status::Ok();
   }
-  dxsplat::Status deviceStatus = CheckDeviceRemoved();
+  directxsplat::Status deviceStatus = CheckDeviceRemoved();
   if (!deviceStatus.ok) {
     return deviceStatus;
   }
@@ -513,7 +513,7 @@ dxsplat::Status SwapchainContext::WaitForFenceValue(uint64_t value) {
       return deviceStatus;
     }
     queueLost_ = true;
-    return dxsplat::Status::Error("SetEventOnCompletion failed " + HrString(hr) + DebugMessages());
+    return directxsplat::Status::Error("SetEventOnCompletion failed " + HrString(hr) + DebugMessages());
   }
   while (fence_->GetCompletedValue() < value) {
     const DWORD wait = WaitForSingleObject(fenceEvent_, kFenceWaitPollMs);
@@ -522,14 +522,14 @@ dxsplat::Status SwapchainContext::WaitForFenceValue(uint64_t value) {
     }
     if (wait != WAIT_TIMEOUT) {
       queueLost_ = true;
-      return dxsplat::Status::Error("WaitForSingleObject failed");
+      return directxsplat::Status::Error("WaitForSingleObject failed");
     }
     deviceStatus = CheckDeviceRemoved();
     if (!deviceStatus.ok) {
       return deviceStatus;
     }
   }
-  return dxsplat::Status::Ok();
+  return directxsplat::Status::Ok();
 }
 
 ID3D12Device* SwapchainContext::Device() const { return device_.Get(); }
@@ -593,4 +593,4 @@ std::string SwapchainContext::DebugMessages() const {
   return out;
 }
 
-}  // namespace dxsplat::internal
+}  // namespace directxsplat::internal

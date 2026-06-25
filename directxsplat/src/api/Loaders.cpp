@@ -8,7 +8,7 @@
 #include "api/GaussianSplatsInternal.h"
 #include "dxsplat/io.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -53,4 +53,4 @@ StatusOr<GaussianSplats> LoadFromSpz(const std::filesystem::path& scenePath) {
   return LoadExpectedExtension(scenePath, ".spz", "expected .spz scene path");
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

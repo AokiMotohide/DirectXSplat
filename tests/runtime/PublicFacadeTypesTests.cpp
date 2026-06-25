@@ -3,14 +3,14 @@
 #include <dxsplat/directxsplat.h>
 
 TEST_CASE("GaussianSplats default object is empty") {
-  dxsplat::GaussianSplats splats;
+  directxsplat::GaussianSplats splats;
 
   CHECK(splats.Size() == 0);
   CHECK(splats.Empty());
 }
 
 TEST_CASE("DrawOptions defaults match viewer defaults") {
-  dxsplat::DrawOptions options{};
+  directxsplat::DrawOptions options{};
 
   CHECK(options.width == 1600);
   CHECK(options.height == 900);
@@ -22,6 +22,6 @@ TEST_CASE("DrawOptions defaults match viewer defaults") {
   CHECK(options.antialiasing);
   CHECK(options.antialiasingStrength == doctest::Approx(1.0f));
   CHECK_FALSE(options.gammaCorrection);
-  CHECK(options.renderType == dxsplat::RenderType::Color);
-  CHECK(options.shadingDegree == dxsplat::ShadingDegree::Degree3);
+  CHECK(options.renderType == directxsplat::RenderType::Color);
+  CHECK(options.shadingDegree == directxsplat::ShadingDegree::Degree3);
 }

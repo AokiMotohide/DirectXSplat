@@ -58,7 +58,7 @@ jobs:
           @'
           #include <dxsplat/directxsplat.h>
           int main() {
-            dxsplat::ViewerConfig config{};
+            directxsplat::ViewerConfig config{};
             config.width = 640;
             config.height = 480;
             return config.width == 640 && config.height == 480 ? 0 : 1;
@@ -85,7 +85,7 @@ jobs:
           if (-not (Test-Path "tests/CMakeLists.txt" -PathType Leaf)) {
             throw "Root tests/CMakeLists.txt is missing"
           }
-          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/core/internal_headers", "directxsplat/src/platform", "directxsplat/src/shaders", "examples", "examples/basic_viewer", "examples/configured_viewer", "tests/core", "tests/platform", "tests/runtime", "tests/viewer")
+          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/core/internal_headers", "directxsplat/src/platform", "directxsplat/src/shaders", "examples", "examples/basic_viewer", "examples/camera_viewer", "examples/basic_draw", "tests/core", "tests/platform", "tests/runtime", "tests/viewer")
           $missingDirs = $requiredDirs | Where-Object { -not (Test-Path $_ -PathType Container) }
           if ($missingDirs.Count -ne 0) {
             throw "Required repository folders are missing: $($missingDirs -join ', ')"
@@ -124,7 +124,7 @@ jobs:
           -DDXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build library for install smoke
-        run: cmake --build build/install-smoke --config Release --target dxsplat --parallel
+        run: cmake --build build/install-smoke --config Release --target directxsplat --parallel
 
       - name: Install package artifacts
         run: cmake --install build/install-smoke --config Release --prefix "$env:RUNNER_TEMP/directxsplat-package"

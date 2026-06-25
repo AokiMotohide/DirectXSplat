@@ -10,7 +10,7 @@
 #include "dxsplat/sort.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct PackedGaussianUpload {
   std::vector<float> positions;
@@ -64,4 +64,4 @@ FrustumPlanes BuildFrustumPlanes(const Mat4& viewProj);
 bool SphereInFrustum(const FrustumPlanes& planes, const Vec3& center, float radius);
 void FrustumCull(const Scene& scene, const FrustumPlanes& planes, std::vector<uint32_t>& visibleGlobalIndices);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

@@ -4,7 +4,7 @@
 
 #include "dxsplat/io.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 SceneFormat DetectSceneFormat(const std::string& path);
 

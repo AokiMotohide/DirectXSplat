@@ -9,7 +9,7 @@
 #include "dxsplat/scene.h"
 #include "renderer/diagnostics.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 Gaussian MakeDiagnosticGaussian(Vec3 position, Vec3 scale, uint32_t splatId, uint32_t instanceId) {
@@ -168,4 +168,4 @@ TEST_CASE("math reference invariants cover transforms and covariance") {
   CHECK(projected.m[1] == doctest::Approx(projected.m[3]));
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

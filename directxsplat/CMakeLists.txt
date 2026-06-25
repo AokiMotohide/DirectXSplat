@@ -89,22 +89,22 @@ add_custom_command(
 
 list(APPEND DIRECTXSPLAT_SOURCES ${DIRECTXSPLAT_EMBEDDED_SHADER_HEADER})
 
-add_library(dxsplat STATIC ${DIRECTXSPLAT_SOURCES})
-add_library(dxsplat::dxsplat ALIAS dxsplat)
-add_library(DirectXSplat::DirectXSplat ALIAS dxsplat)
+add_library(directxsplat STATIC ${DIRECTXSPLAT_SOURCES})
+add_library(directxsplat::directxsplat ALIAS directxsplat)
+add_library(DirectXSplat::DirectXSplat ALIAS directxsplat)
 
-set_target_properties(dxsplat PROPERTIES
+set_target_properties(directxsplat PROPERTIES
   OUTPUT_NAME DirectXSplat
   EXPORT_NAME DirectXSplat
 )
 
-target_compile_features(dxsplat PUBLIC cxx_std_20)
+target_compile_features(directxsplat PUBLIC cxx_std_20)
 
 if(COMMAND directxsplat_apply_project_warnings)
-  directxsplat_apply_project_warnings(dxsplat)
+  directxsplat_apply_project_warnings(directxsplat)
 endif()
 
-target_include_directories(dxsplat
+target_include_directories(directxsplat
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -116,7 +116,7 @@ target_include_directories(dxsplat
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
-target_include_directories(dxsplat SYSTEM
+target_include_directories(directxsplat SYSTEM
   PRIVATE
     ${DIRECTXSPLAT_ROOT_DIR}/3rdparty
     ${DIRECTXSPLAT_3RDPARTY_DIR}
@@ -132,10 +132,10 @@ get_target_property(DIRECTXSPLAT_JSON_INCLUDE_DIRS
   nlohmann_json::nlohmann_json
   INTERFACE_INCLUDE_DIRECTORIES)
 if(DIRECTXSPLAT_JSON_INCLUDE_DIRS)
-  target_include_directories(dxsplat SYSTEM PRIVATE ${DIRECTXSPLAT_JSON_INCLUDE_DIRS})
+  target_include_directories(directxsplat SYSTEM PRIVATE ${DIRECTXSPLAT_JSON_INCLUDE_DIRS})
 endif()
 
-target_compile_definitions(dxsplat
+target_compile_definitions(directxsplat
   PRIVATE
     UNICODE
     _UNICODE
@@ -145,7 +145,7 @@ target_compile_definitions(dxsplat
     NOMINMAX
 )
 
-target_link_libraries(dxsplat
+target_link_libraries(directxsplat
   PUBLIC
     d3d12
     dxgi
@@ -232,7 +232,7 @@ endif()
 
 set(directxsplat_install_cmakedir ${CMAKE_INSTALL_LIBDIR}/cmake/DirectXSplat)
 
-install(TARGETS dxsplat
+install(TARGETS directxsplat
   EXPORT DirectXSplatTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

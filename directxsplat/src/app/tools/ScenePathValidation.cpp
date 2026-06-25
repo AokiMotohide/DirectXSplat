@@ -4,7 +4,7 @@
 #include <cctype>
 #include <string>
 
-namespace dxsplat::internal {
+namespace directxsplat::internal {
 
 namespace fs = std::filesystem;
 
@@ -40,4 +40,4 @@ StatusOr<fs::path> ValidateDroppedScenePath(const fs::path& path) {
   return StatusOr<fs::path>::Error("dropped path is not a supported scene file");
 }
 
-}  // namespace dxsplat::internal
+}  // namespace directxsplat::internal

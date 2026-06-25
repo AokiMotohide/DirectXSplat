@@ -11,7 +11,8 @@ set(required_files
   docs/migration-v0.2.md
   examples/CMakeLists.txt
   examples/basic_viewer/main.cpp
-  examples/configured_viewer/main.cpp
+  examples/camera_viewer/main.cpp
+  examples/basic_draw/main.cpp
 )
 
 foreach(path IN LISTS required_files)
@@ -65,13 +66,16 @@ endforeach()
 
 set(example_sources
   examples/basic_viewer/main.cpp
-  examples/configured_viewer/main.cpp
+  examples/camera_viewer/main.cpp
+  examples/basic_draw/main.cpp
 )
 set(forbidden_example_text
   "d3d12.h"
   "dxgi.h"
   "dxsplat/renderer.h"
   "dxsplat/context.h"
+  "dxsplat/gpu_resources.h"
+  "dxsplat/io.h"
 )
 
 foreach(path IN LISTS example_sources)
@@ -79,7 +83,7 @@ foreach(path IN LISTS example_sources)
   foreach(pattern IN LISTS forbidden_example_text)
     string(FIND "${contents}" "${pattern}" match_index)
     if(NOT match_index EQUAL -1)
-      message(FATAL_ERROR "Facade example contains forbidden include text: ${path}: ${pattern}")
+      message(FATAL_ERROR "Example contains forbidden include text: ${path}: ${pattern}")
     endif()
   endforeach()
 endforeach()

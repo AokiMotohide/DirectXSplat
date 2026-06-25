@@ -5,7 +5,7 @@
 #include "dxsplat/directxsplat.h"
 #include "dxsplat/scene.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class GaussianSplats::Impl {
  public:
@@ -31,4 +31,4 @@ const Aabb& BoundsFromSplats(const GaussianSplats& splats);
 Scene& SceneFromSplats(GaussianSplats& splats);
 const Scene& SceneFromSplats(const GaussianSplats& splats);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

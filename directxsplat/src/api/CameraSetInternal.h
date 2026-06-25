@@ -7,7 +7,7 @@
 #include "dxsplat/scene.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct CameraRenderState {
   Mat4 view{};
@@ -21,4 +21,4 @@ CameraParams CameraParamsFromInputCamera(const InputCamera& input, uint32_t widt
 InputCamera InputCameraFromCameraParams(const CameraParams& camera, size_t index);
 StatusOr<CameraSet> ConvertInputCamerasToCameraSet(const Scene& scene);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

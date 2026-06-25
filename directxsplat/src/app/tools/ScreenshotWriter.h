@@ -8,7 +8,7 @@
 #include "platform/SwapchainContext.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class ScreenshotWriter {
  public:
@@ -32,4 +32,4 @@ class ScreenshotWriter {
   PendingCapture pending_{};
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

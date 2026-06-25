@@ -9,7 +9,7 @@
 #include "dxsplat/settings.h"
 #include "dxsplat/types.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class RenderHookStage {
   BeforePrepare,
@@ -42,4 +42,4 @@ struct RenderHooks {
   std::function<void(const RenderHookContext&)> afterPostProcess;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

@@ -7,7 +7,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 class ZipArchive {
  public:

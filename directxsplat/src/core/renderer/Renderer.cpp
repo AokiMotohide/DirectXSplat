@@ -24,7 +24,7 @@
 
 #include <wrl/client.h>
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 

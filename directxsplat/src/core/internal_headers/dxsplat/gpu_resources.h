@@ -11,7 +11,7 @@
 #include "dxsplat/types.h"
 #include "dxsplat/vram_format.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class GpuResourceAccess {
   ReadOnly,
@@ -191,4 +191,4 @@ struct UploadedSceneGpuResources {
   GpuBufferView sortMeta{};
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

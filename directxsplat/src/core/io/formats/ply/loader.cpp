@@ -16,7 +16,7 @@
 #include "dxsplat/bounding.h"
 #include "io/common/string_util.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace {
 

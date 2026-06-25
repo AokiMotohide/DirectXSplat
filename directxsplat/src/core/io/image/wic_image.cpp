@@ -16,7 +16,7 @@
 #include "stb_image.h"
 #include "filesystem.hpp"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace {
 

@@ -19,7 +19,7 @@
 #include "io/formats/splat/loader.h"
 #include "io/formats/spz/loader.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace fs = ghc::filesystem;
 
@@ -335,10 +335,10 @@ void LoadInputCameras(const fs::path& scenePath, const std::string& imageOverrid
     return value;
   };
 
-  StatusOr<CameraSet> loadedCameras = dxsplat::LoadCameraSet(std::filesystem::path(cameraPath.string()));
+  StatusOr<CameraSet> loadedCameras = directxsplat::LoadCameraSet(std::filesystem::path(cameraPath.string()));
   if (loadedCameras.ok()) {
     for (size_t i = 0; i < loadedCameras.value.cameras.size(); ++i) {
-      InputCamera cam = dxsplat::InputCameraFromCameraParams(loadedCameras.value.cameras[i], i);
+      InputCamera cam = directxsplat::InputCameraFromCameraParams(loadedCameras.value.cameras[i], i);
       if (i < json.size() && json[i].is_object()) {
         cam.sourceImage = readCameraString(json[i], "image", "");
       }

@@ -7,7 +7,7 @@
 
 #include "miniz.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace {
 

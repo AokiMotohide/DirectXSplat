@@ -15,7 +15,7 @@
 #include "dxsplat/status.h"
 #include "ui/UiLayer.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct CameraFrameVertex {
   Vec3 position{};
@@ -83,4 +83,4 @@ class CameraFrameRenderer {
   std::array<FrameBuffers, 2> frames_{};
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

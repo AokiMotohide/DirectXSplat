@@ -11,7 +11,7 @@
 #include "dxsplat/sort.h"
 #include "dxsplat/types.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 constexpr ShadingDegree SanitizeShadingDegree(ShadingDegree degree) {
   switch (degree) {
@@ -140,4 +140,4 @@ const char* StatisticsGraphTitle(StatisticsGraph graph);
 const char* StatisticsGraphColumnTitle(StatisticsGraph graph);
 const char* StatisticsGraphRowTitle(StatisticsGraph graph);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

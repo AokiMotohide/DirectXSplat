@@ -138,11 +138,11 @@ jobs:
       - name: Build product viewer target
         run: cmake --build build/viewer --config Release --target directxsplat_viewer
 
-      - name: Build facade examples
+      - name: Build examples
         run: >
           cmake --build build/viewer
           --config Release
-          --target DirectXSplatBasicViewerExample DirectXSplatConfiguredViewerExample
+          --target DirectXSplatBasicViewerExample DirectXSplatCameraViewerExample DirectXSplatBasicDrawExample
 
       - name: Verify product viewer artifacts
         run: |
@@ -150,7 +150,8 @@ jobs:
           $required = @(
             "DirectXSplatViewer.exe",
             "DirectXSplatBasicViewerExample.exe",
-            "DirectXSplatConfiguredViewerExample.exe"
+            "DirectXSplatCameraViewerExample.exe",
+            "DirectXSplatBasicDrawExample.exe"
           )
           $missing = $required | Where-Object { -not (Test-Path (Join-Path $bin $_) -PathType Leaf) }
           if ($missing.Count -ne 0) {
@@ -158,7 +159,11 @@ jobs:
           }
           $forbidden = @(
             "DirectXSplatMinimalViewer.exe",
-            "DirectXSplatOffscreenCapture.exe"
+            "DirectXSplatOffscreenCapture.exe",
+            "DirectXSplatConfiguredViewerExample.exe",
+            "DirectXSplatFacadeViewerExample.exe",
+            "DirectXSplatFacadeCameraViewerExample.exe",
+            "DirectXSplatFacadeDrawExample.exe"
           )
           $present = $forbidden | Where-Object { Test-Path (Join-Path $bin $_) -PathType Leaf }
           if ($present.Count -ne 0) {

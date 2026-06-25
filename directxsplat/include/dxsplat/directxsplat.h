@@ -9,7 +9,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class RenderType {
   Color,
@@ -118,4 +118,4 @@ Status Show(const GaussianSplats& splats, const ViewerConfig& config = {});
 Status Show(const GaussianSplats& splats, const CameraSet& cameras, const ViewerConfig& config = {});
 StatusOr<ImageRgba8> Draw(const GaussianSplats& splats, const CameraParams& camera, const DrawOptions& options = {});
 
-}  // namespace dxsplat
+}  // namespace directxsplat

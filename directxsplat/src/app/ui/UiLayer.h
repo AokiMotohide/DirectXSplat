@@ -12,7 +12,7 @@
 #include "dxsplat/settings.h"
 #include "metrics/ImageMetrics.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct UiActions {
   std::function<void()> openScene;
@@ -76,4 +76,4 @@ class UiLayer {
   void Render(UiFrameData& frame, UiActions& actions);
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

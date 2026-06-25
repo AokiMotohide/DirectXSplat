@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace dxsplat {
+namespace directxsplat {
 
 Aabb ComputeAabb(const std::vector<Vec3>& points) {
   Aabb out{};
@@ -60,4 +60,4 @@ float ComputeAabbRadius(const Aabb& aabb) {
   return Length(ext) * 0.5f;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

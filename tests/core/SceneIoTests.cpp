@@ -14,7 +14,7 @@
 #include "dxsplat/io.h"
 #include "dxsplat/scene.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 std::filesystem::path AssetPath(const char* name) {
@@ -427,4 +427,4 @@ TEST_CASE("DetectSceneFormat and BackgroundSceneLoader are race-tolerant") {
   std::filesystem::remove_all(dir, ec);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

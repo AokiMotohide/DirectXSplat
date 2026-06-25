@@ -42,17 +42,17 @@ std::filesystem::path WriteTinyPly(const std::filesystem::path& dir) {
   return path;
 }
 
-dxsplat::GaussianSplats LoadTinySplats(const char* name) {
+directxsplat::GaussianSplats LoadTinySplats(const char* name) {
   const std::filesystem::path dir = MakeTempDir(name);
-  auto loaded = dxsplat::LoadFromPly(WriteTinyPly(dir));
+  auto loaded = directxsplat::LoadFromPly(WriteTinyPly(dir));
   REQUIRE(loaded.ok());
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
   return std::move(loaded.value);
 }
 
-dxsplat::CameraParams MakeCamera(uint32_t width = 64, uint32_t height = 64) {
-  dxsplat::CameraParams camera{};
+directxsplat::CameraParams MakeCamera(uint32_t width = 64, uint32_t height = 64) {
+  directxsplat::CameraParams camera{};
   camera.width = width;
   camera.height = height;
   camera.extrinsic = {
@@ -72,54 +72,54 @@ dxsplat::CameraParams MakeCamera(uint32_t width = 64, uint32_t height = 64) {
 }  // namespace
 
 TEST_CASE("Draw rejects empty splats") {
-  const dxsplat::GaussianSplats splats;
-  const auto image = dxsplat::Draw(splats, MakeCamera());
+  const directxsplat::GaussianSplats splats;
+  const auto image = directxsplat::Draw(splats, MakeCamera());
 
   CHECK_FALSE(image.ok());
   CHECK(image.status.message == "splats are empty");
 }
 
 TEST_CASE("Draw rejects zero output size") {
-  const dxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_zero_output");
-  dxsplat::DrawOptions options{};
+  const directxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_zero_output");
+  directxsplat::DrawOptions options{};
   options.width = 0;
 
-  auto image = dxsplat::Draw(splats, MakeCamera(), options);
+  auto image = directxsplat::Draw(splats, MakeCamera(), options);
 
   CHECK_FALSE(image.ok());
   CHECK(image.status.message == "draw width must be greater than zero");
 
   options.width = 64;
   options.height = 0;
-  image = dxsplat::Draw(splats, MakeCamera(), options);
+  image = directxsplat::Draw(splats, MakeCamera(), options);
 
   CHECK_FALSE(image.ok());
   CHECK(image.status.message == "draw height must be greater than zero");
 }
 
 TEST_CASE("Draw rejects zero camera size") {
-  const dxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_zero_camera");
-  dxsplat::CameraParams camera = MakeCamera(0, 64);
+  const directxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_zero_camera");
+  directxsplat::CameraParams camera = MakeCamera(0, 64);
 
-  auto image = dxsplat::Draw(splats, camera);
+  auto image = directxsplat::Draw(splats, camera);
 
   CHECK_FALSE(image.ok());
   CHECK(image.status.message == "camera width must be greater than zero");
 
   camera = MakeCamera(64, 0);
-  image = dxsplat::Draw(splats, camera);
+  image = directxsplat::Draw(splats, camera);
 
   CHECK_FALSE(image.ok());
   CHECK(image.status.message == "camera height must be greater than zero");
 }
 
 TEST_CASE("Draw rejects invalid near and far planes") {
-  const dxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_bad_planes");
-  dxsplat::DrawOptions options{};
+  const directxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_bad_planes");
+  directxsplat::DrawOptions options{};
   options.nearPlane = 2.0f;
   options.farPlane = 1.0f;
 
-  const auto image = dxsplat::Draw(splats, MakeCamera(), options);
+  const auto image = directxsplat::Draw(splats, MakeCamera(), options);
 
   CHECK_FALSE(image.ok());
   CHECK(image.status.message == "far plane must be greater than near plane");
@@ -127,12 +127,12 @@ TEST_CASE("Draw rejects invalid near and far planes") {
 
 #if DXSPLAT_ENABLE_GPU_TESTS
 TEST_CASE("Draw renders a tiny scene offscreen") {
-  const dxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_gpu_tiny");
-  dxsplat::DrawOptions options{};
+  const directxsplat::GaussianSplats splats = LoadTinySplats("directxsplat_draw_gpu_tiny");
+  directxsplat::DrawOptions options{};
   options.width = 64;
   options.height = 64;
 
-  const auto image = dxsplat::Draw(splats, MakeCamera(), options);
+  const auto image = directxsplat::Draw(splats, MakeCamera(), options);
 
   REQUIRE_MESSAGE(image.ok(), image.status.message);
   CHECK(image.value.width == 64);

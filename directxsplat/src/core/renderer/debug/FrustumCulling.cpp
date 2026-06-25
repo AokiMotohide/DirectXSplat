@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -54,4 +54,4 @@ void FrustumCull(const Scene& scene, const FrustumPlanes& planes, std::vector<ui
   }
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

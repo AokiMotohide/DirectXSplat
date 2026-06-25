@@ -11,7 +11,7 @@
 #include "io/format_detection.h"
 #include "io/scene_loader.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace fs = ghc::filesystem;
 

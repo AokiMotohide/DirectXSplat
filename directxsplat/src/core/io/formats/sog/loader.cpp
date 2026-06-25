@@ -20,7 +20,7 @@
 #include "io/image/wic_image.h"
 #include "io/archive/zip_archive.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace fs = ghc::filesystem;
 

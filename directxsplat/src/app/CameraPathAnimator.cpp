@@ -5,7 +5,7 @@
 
 #include "api/CameraSetInternal.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 

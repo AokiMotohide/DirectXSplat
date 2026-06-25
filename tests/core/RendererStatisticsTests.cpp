@@ -3,14 +3,14 @@
 #include "dxsplat/settings.h"
 
 TEST_CASE("Splat alpha histogram preserves projected frame bins") {
-  dxsplat::FrameStats stats{};
+  directxsplat::FrameStats stats{};
   stats.splatAlpha.minValue = 0.0f;
   stats.splatAlpha.maxValue = 1.0f;
   stats.splatAlpha.bins[0] = 1.0f;
   stats.splatAlpha.bins[25] = 2.0f;
   stats.splatAlpha.bins[49] = 3.0f;
 
-  const dxsplat::HistogramData histogram = dxsplat::BuildSplatAlphaHistogram(stats, 50);
+  const directxsplat::HistogramData histogram = directxsplat::BuildSplatAlphaHistogram(stats, 50);
 
   CHECK(histogram.minValue == doctest::Approx(0.0f));
   CHECK(histogram.maxValue == doctest::Approx(1.0f));
@@ -20,13 +20,13 @@ TEST_CASE("Splat alpha histogram preserves projected frame bins") {
 }
 
 TEST_CASE("Projection Active Threads histogram preserves renderer bins") {
-  dxsplat::FrameStats stats{};
+  directxsplat::FrameStats stats{};
   stats.projectionActiveThreads.minValue = 0.0f;
   stats.projectionActiveThreads.maxValue = 64.0f;
   stats.projectionActiveThreads.bins[0] = 2.0f;
   stats.projectionActiveThreads.bins[63] = 3.0f;
 
-  const dxsplat::HistogramData histogram = dxsplat::BuildProjectionActiveThreadsHistogram(stats, 64);
+  const directxsplat::HistogramData histogram = directxsplat::BuildProjectionActiveThreadsHistogram(stats, 64);
 
   CHECK(histogram.minValue == doctest::Approx(0.0f));
   CHECK(histogram.maxValue == doctest::Approx(64.0f));

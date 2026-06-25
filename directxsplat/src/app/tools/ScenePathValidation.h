@@ -4,8 +4,8 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat::internal {
+namespace directxsplat::internal {
 
 StatusOr<std::filesystem::path> ValidateDroppedScenePath(const std::filesystem::path& path);
 
-}  // namespace dxsplat::internal
+}  // namespace directxsplat::internal

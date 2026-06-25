@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -210,7 +210,7 @@ CameraRenderState CameraRenderStateFromCameraParams(const CameraParams& camera, 
   CameraRenderState out{};
   out.view.m = {
       e[0], e[1], e[2], e[3],
-      -e[4], -e[5], -e[6], -e[7],
+      e[4], e[5], e[6], e[7],
       e[8], e[9], e[10], e[11],
       0.0f, 0.0f, 0.0f, 1.0f,
   };
@@ -281,4 +281,4 @@ StatusOr<CameraSet> ConvertInputCamerasToCameraSet(const Scene& scene) {
   return StatusOr<CameraSet>::Ok(std::move(out));
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

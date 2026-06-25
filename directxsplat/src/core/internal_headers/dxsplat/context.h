@@ -4,7 +4,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class D3D12Context {
  public:
@@ -31,4 +31,4 @@ class D3D12Context {
   ID3D12Fence* uploadFence_ = nullptr;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

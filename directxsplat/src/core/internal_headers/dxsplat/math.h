@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct Vec2 {
   float x = 0.0f;
@@ -70,4 +70,4 @@ Mat3 ProjectCovarianceToScreen(const Mat3& covariance,
                                float focalX,
                                float focalY);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

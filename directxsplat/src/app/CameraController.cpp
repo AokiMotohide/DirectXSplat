@@ -5,7 +5,7 @@
 
 #include "api/CameraSetInternal.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -291,15 +291,16 @@ void CameraController::SnapToCameraParams(const CameraParams& camera) {
   }
 
   const CameraRenderState renderState = CameraRenderStateFromCameraParams(camera, state_.nearPlane, state_.farPlane);
+  const auto& e = camera.extrinsic;
   const Vec3 forward = Normalize(Vec3{
-      renderState.view.m[8],
-      renderState.view.m[9],
-      renderState.view.m[10],
+      e[8],
+      e[9],
+      e[10],
   });
   const Vec3 up = Normalize(Vec3{
-      renderState.view.m[4],
-      renderState.view.m[5],
-      renderState.view.m[6],
+      -e[4],
+      -e[5],
+      -e[6],
   });
   if (!Finite(renderState.position) || !Finite(forward) || !Finite(up) ||
       Length(forward) <= 1e-6f || Length(up) <= 1e-6f) {
@@ -403,4 +404,4 @@ void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& fo
 
 void CameraController::ClampPitch() { state_.pitch = std::clamp(state_.pitch, -1.55334f, 1.55334f); }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

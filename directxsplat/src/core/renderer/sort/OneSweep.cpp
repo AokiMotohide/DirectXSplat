@@ -16,7 +16,7 @@
 
 #include "GPUSorting/GPUSortingD3D12/Tuner.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -678,4 +678,4 @@ Status OneSweep::DispatchIndirect(const OneSweepIndirectDispatch& dispatch, OneS
   return Status::Ok();
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

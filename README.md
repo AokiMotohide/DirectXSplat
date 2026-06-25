@@ -42,7 +42,7 @@ cmake -S . -B build-lib -G "Visual Studio 17 2022" -A x64 `
   -DDXSPLAT_BUILD_SAMPLE=OFF `
   -DDXSPLAT_BUILD_TESTS=OFF
 
-cmake --build build-lib --config Release --target dxsplat
+cmake --build build-lib --config Release --target directxsplat
 ```
 
 ## Use From CMake
@@ -99,18 +99,18 @@ DirectXSplat does not own your swapchain or frame loop. You provide the D3D12 de
 #include "dxsplat/io.h"
 #include "dxsplat/renderer.h"
 
-dxsplat::D3D12Context context;
-dxsplat::Status status = context.Initialize(device, directQueue, directFence);
+directxsplat::D3D12Context context;
+directxsplat::Status status = context.Initialize(device, directQueue, directFence);
 if (!status.ok) return status;
 
-dxsplat::Renderer renderer;
+directxsplat::Renderer renderer;
 status = renderer.Initialize(context);
 if (!status.ok) return status;
 
-dxsplat::StatusOr<dxsplat::Scene> loaded = dxsplat::LoadSceneFromFile(scenePath);
+directxsplat::StatusOr<directxsplat::Scene> loaded = directxsplat::LoadSceneFromFile(scenePath);
 if (!loaded.ok()) return loaded.status;
 
-dxsplat::UploadedSceneHandle sceneHandle;
+directxsplat::UploadedSceneHandle sceneHandle;
 status = renderer.CreateUploadedScene(loaded.value, sceneHandle);
 if (!status.ok) return status;
 ```
@@ -118,7 +118,7 @@ if (!status.ok) return status;
 Per frame:
 
 ```cpp
-dxsplat::RenderInput input{};
+directxsplat::RenderInput input{};
 input.view = view;
 input.proj = proj;
 input.cameraPosition = cameraPosition;
@@ -130,7 +130,7 @@ input.frameIndex = frameIndex;
 input.settings.antialiasing = true;
 input.settings.fastCulling = true;
 
-dxsplat::RenderTargetBinding target{};
+directxsplat::RenderTargetBinding target{};
 target.colorTarget = backBuffer;
 target.colorRtv = rtv;
 target.colorFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -139,17 +139,17 @@ target.colorStateAfter = D3D12_RESOURCE_STATE_PRESENT;
 target.viewport = viewport;
 target.scissor = scissor;
 
-dxsplat::RenderFrameContext frameContext{};
+directxsplat::RenderFrameContext frameContext{};
 frameContext.fence = directFence;
 frameContext.completedFenceValue = directFence->GetCompletedValue();
 frameContext.submissionFenceValue = fenceValueYouWillSignalAfterExecute;
 frameContext.frameIndex = frameIndex;
 
-dxsplat::RenderPreparationResult preparation{};
+directxsplat::RenderPreparationResult preparation{};
 status = renderer.PrepareSceneForRender(sceneHandle, input, frameContext, &preparation);
 if (!status.ok) return status;
 
-dxsplat::RenderResult result{};
+directxsplat::RenderResult result{};
 status = renderer.Render(commandList, target, sceneHandle, input, frameContext, result);
 if (!status.ok && !result.submission.submissionRequired) return status;
 
@@ -178,7 +178,7 @@ Required fields:
 ## Renderer Configuration
 
 ```cpp
-dxsplat::RendererConfig config{};
+directxsplat::RendererConfig config{};
 config.residencyBudgetGaussians = 16ull * 1024ull * 1024ull;
 config.uploadBudgetGaussians = 650000;
 config.warmUploadBudgetGaussians = 1200000;
@@ -206,7 +206,7 @@ renderer.UpdateUploadedScene(sceneHandle, newScene);
 Chunk mutation:
 
 ```cpp
-dxsplat::SceneMutationToken token;
+directxsplat::SceneMutationToken token;
 renderer.BeginSceneMutation(sceneHandle, token);
 renderer.AddUploadedChunk(token, gaussianSet, outChunkHandle);
 renderer.EndSceneMutation(token);
@@ -225,7 +225,7 @@ Available chunk operations:
 ## GPU Resource Interop
 
 ```cpp
-dxsplat::UploadedSceneGpuResources resources{};
+directxsplat::UploadedSceneGpuResources resources{};
 status = renderer.AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources);
 if (!status.ok) return status;
 

@@ -14,7 +14,7 @@
 
 #include "dxsplat/bounding.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace {
 

@@ -30,7 +30,7 @@ std::vector<std::string> GetUtf8Args() {
 }  
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
-  const auto parse = dxsplat::internal::ParseCliOptions(GetUtf8Args());
+  const auto parse = directxsplat::internal::ParseCliOptions(GetUtf8Args());
   if (!parse.ok()) {
     MessageBoxA(nullptr, parse.status.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
     return 1;
@@ -49,14 +49,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     return 0;
   }
 
-  dxsplat::ViewerConfig config{};
+  directxsplat::ViewerConfig config{};
   config.initialScenePath = parse.value.scenePath.value_or("");
   config.sceneFolderPath = parse.value.folderTraversalPath.value_or("");
   config.sourceImageDirectory = parse.value.imagePathOverride.value_or("");
   config.width = parse.value.renderWidthOverride.value_or(1600);
   config.height = parse.value.renderHeightOverride.value_or(900);
 
-  const dxsplat::Status result = dxsplat::Show(config);
+  const directxsplat::Status result = directxsplat::Show(config);
   if (!result.ok) {
     MessageBoxA(nullptr, result.message.c_str(), "DirectXSplat", MB_OK | MB_ICONERROR);
     return 1;

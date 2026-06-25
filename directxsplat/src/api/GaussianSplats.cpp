@@ -3,7 +3,7 @@
 #include <memory>
 #include <utility>
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -106,4 +106,4 @@ const Scene& SceneFromSplats(const GaussianSplats& splats) {
   return impl ? impl->scene : emptyScene;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

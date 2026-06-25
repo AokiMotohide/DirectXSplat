@@ -5,5 +5,10 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  return dxsplat::Show(argv[1]).ok ? 0 : 1;
+  auto splats = directxsplat::LoadFromPly(argv[1]);
+  if (!splats.ok()) {
+    return 1;
+  }
+
+  return directxsplat::Show(splats.value).ok ? 0 : 1;
 }

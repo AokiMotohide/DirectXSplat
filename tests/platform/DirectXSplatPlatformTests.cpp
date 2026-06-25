@@ -9,7 +9,7 @@
 #include "platform/Image.h"
 #include "platform/SwapchainContext.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 std::filesystem::path TempPath(const char* name) {
@@ -121,4 +121,4 @@ TEST_CASE("SwapchainContext queue-lost notification disables submission") {
   CHECK(context.PendingSubmissionFenceValue() == 0u);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

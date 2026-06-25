@@ -8,7 +8,7 @@
 #include "dxsplat/scene.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct SceneEntry {
   Scene scene{};
@@ -35,4 +35,4 @@ class SceneManager {
   size_t activeScene_ = 0;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

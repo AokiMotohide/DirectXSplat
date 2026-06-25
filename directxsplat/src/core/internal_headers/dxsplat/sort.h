@@ -3,7 +3,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class SortBackend {
   OneSweep,
@@ -17,4 +17,4 @@ inline uint32_t EncodeDepthSortKeyBackToFront(float depth) {
   return ~sortableAscending;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

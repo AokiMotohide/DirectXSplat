@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace dxsplat {
+namespace directxsplat {
 
 std::string FormatPinnedFps(float fps) {
   char buffer[96]{};

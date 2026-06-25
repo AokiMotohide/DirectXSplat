@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 constexpr size_t kGraphCapacity = 256;
@@ -121,4 +121,4 @@ const char* StatisticsGraphRowTitle(StatisticsGraph graph) {
   }
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

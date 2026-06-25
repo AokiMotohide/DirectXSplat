@@ -4,7 +4,7 @@
 
 #include "io/formats/ply/raw/ply_types.h"
 
-namespace dxsplat::io::ply {
+namespace directxsplat::io::ply {
 
 StatusOr<PlyFile> ReadPlyFile(const std::string& path);
 

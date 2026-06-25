@@ -12,7 +12,7 @@
 #include "tools/CliOptions.h"
 #include "tools/ScenePathValidation.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 internal::ImageRgba8 MakeImage(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels) {
@@ -141,4 +141,4 @@ TEST_CASE("image metrics match deterministic reference values") {
   CHECK(BuildDiffImage(overflowHeader, overflowHeader).Empty());
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

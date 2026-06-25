@@ -6,7 +6,7 @@
 
 #include "filesystem.hpp"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 namespace fs = ghc::filesystem;
 

@@ -6,8 +6,8 @@
 
 namespace {
 
-dxsplat::CameraParams MakeCamera(float x, float y, float z) {
-  dxsplat::CameraParams camera{};
+directxsplat::CameraParams MakeCamera(float x, float y, float z) {
+  directxsplat::CameraParams camera{};
   camera.width = 100;
   camera.height = 100;
   camera.intrinsic = {
@@ -24,15 +24,15 @@ dxsplat::CameraParams MakeCamera(float x, float y, float z) {
   return camera;
 }
 
-dxsplat::CameraSet MakeCameraSet(size_t count) {
-  dxsplat::CameraSet cameras{};
+directxsplat::CameraSet MakeCameraSet(size_t count) {
+  directxsplat::CameraSet cameras{};
   for (size_t i = 0; i < count; ++i) {
     cameras.cameras.push_back(MakeCamera(static_cast<float>(i), static_cast<float>(i % 2u), 2.0f));
   }
   return cameras;
 }
 
-bool Finite(const dxsplat::CameraState& state) {
+bool Finite(const directxsplat::CameraState& state) {
   return std::isfinite(state.position.x) && std::isfinite(state.position.y) && std::isfinite(state.position.z) &&
          std::isfinite(state.yaw) && std::isfinite(state.pitch) && std::isfinite(state.roll);
 }
@@ -40,17 +40,17 @@ bool Finite(const dxsplat::CameraState& state) {
 }
 
 TEST_CASE("Animator with zero cameras returns false") {
-  dxsplat::CameraPathAnimator animator;
-  dxsplat::CameraState state{};
+  directxsplat::CameraPathAnimator animator;
+  directxsplat::CameraState state{};
 
   CHECK_FALSE(animator.Evaluate(state));
 }
 
 TEST_CASE("Animator with one camera returns that camera") {
-  dxsplat::CameraPathAnimator animator;
+  directxsplat::CameraPathAnimator animator;
   animator.SetCameras(MakeCameraSet(1));
 
-  dxsplat::CameraState state{};
+  directxsplat::CameraState state{};
   CHECK(animator.Evaluate(state));
   CHECK(state.position.x == doctest::Approx(0.0f));
   CHECK(state.position.y == doctest::Approx(0.0f));
@@ -58,7 +58,7 @@ TEST_CASE("Animator with one camera returns that camera") {
 }
 
 TEST_CASE("Advance wraps by camera count") {
-  dxsplat::CameraPathAnimator animator;
+  directxsplat::CameraPathAnimator animator;
   animator.SetCameras(MakeCameraSet(4));
   animator.SetTime(3.75f);
   animator.Advance(1.0f, 1.0f);
@@ -69,29 +69,29 @@ TEST_CASE("Advance wraps by camera count") {
 }
 
 TEST_CASE("Manual camera edit disables animation") {
-  dxsplat::AnimationUiState state{};
+  directxsplat::AnimationUiState state{};
   state.enabled = true;
 
-  dxsplat::StopAnimationOnCameraEdit(state, true);
+  directxsplat::StopAnimationOnCameraEdit(state, true);
 
   CHECK_FALSE(state.enabled);
 }
 
 TEST_CASE("Interpolated pose is finite") {
-  dxsplat::CameraPathAnimator animator;
+  directxsplat::CameraPathAnimator animator;
   animator.SetCameras(MakeCameraSet(4));
 
   for (float time : {0.0f, 0.25f, 1.5f, 3.75f}) {
     animator.SetTime(time);
-    dxsplat::CameraState state{};
+    directxsplat::CameraState state{};
     CHECK(animator.Evaluate(state));
     CHECK(Finite(state));
   }
 }
 
 TEST_CASE("Camera snap uses default viewer fov") {
-  dxsplat::CameraController controller;
-  dxsplat::CameraState state = controller.State();
+  directxsplat::CameraController controller;
+  directxsplat::CameraState state = controller.State();
   state.fovYRadians = 0.75f;
   controller.SetState(state);
 
@@ -100,5 +100,5 @@ TEST_CASE("Camera snap uses default viewer fov") {
   CHECK(controller.State().position.x == doctest::Approx(1.0f));
   CHECK(controller.State().position.y == doctest::Approx(2.0f));
   CHECK(controller.State().position.z == doctest::Approx(3.0f));
-  CHECK(controller.State().fovYRadians == doctest::Approx(dxsplat::kDefaultCameraFovYRadians));
+  CHECK(controller.State().fovYRadians == doctest::Approx(directxsplat::kDefaultCameraFovYRadians));
 }

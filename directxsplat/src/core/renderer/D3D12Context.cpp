@@ -1,6 +1,6 @@
 #include "renderer/D3D12Context.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 Status D3D12Context::Initialize(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12Fence* submissionFence) {
   return Initialize(device, queue, submissionFence, nullptr, nullptr);
@@ -43,4 +43,4 @@ ID3D12Fence* D3D12Context::SubmissionFence() const { return submissionFence_; }
 ID3D12CommandQueue* D3D12Context::CopyQueue() const { return copyQueue_; }
 ID3D12Fence* D3D12Context::UploadFence() const { return uploadFence_; }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

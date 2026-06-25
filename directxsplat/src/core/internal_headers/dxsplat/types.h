@@ -8,7 +8,7 @@
 
 struct ID3D12Fence;
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct UploadSyncPoint {
   ID3D12Fence* fence = nullptr;
@@ -48,4 +48,4 @@ struct SceneAccessInfo {
   uint32_t waitingMutations = 0;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

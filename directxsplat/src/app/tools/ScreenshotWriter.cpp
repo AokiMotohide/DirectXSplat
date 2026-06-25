@@ -11,7 +11,7 @@
 
 #include "platform/Image.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -257,4 +257,4 @@ bool ScreenshotWriter::HasPendingCapture() const {
   return pending_.active;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

@@ -4,7 +4,7 @@
 
 #include "dxsplat/math.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct Aabb {
   Vec3 min{0.0f, 0.0f, 0.0f};
@@ -17,4 +17,4 @@ Aabb ComputePercentileAabb(const std::vector<Vec3>& points, float lowPercentile,
 Vec3 ComputeAabbCenter(const Aabb& aabb);
 float ComputeAabbRadius(const Aabb& aabb);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

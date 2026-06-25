@@ -3,7 +3,7 @@
 #include <string>
 #include <utility>
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct Status {
   bool ok = true;
@@ -23,4 +23,4 @@ struct StatusOr {
   bool ok() const { return status.ok; }
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

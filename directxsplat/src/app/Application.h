@@ -19,7 +19,7 @@
 #include "tools/ScreenshotWriter.h"
 #include "ui/UiLayer.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class Application {
  public:
@@ -109,4 +109,4 @@ class Application {
   bool fullscreenTogglePending_ = false;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

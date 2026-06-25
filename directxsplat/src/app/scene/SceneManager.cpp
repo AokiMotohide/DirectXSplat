@@ -1,6 +1,6 @@
 #include "scene/SceneManager.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 Status SceneManager::AddScene(Scene scene, UploadedSceneHandle uploadedScene, std::vector<UploadedChunkHandle> uploadedChunks) {
   scenes_.push_back(SceneEntry{std::move(scene), uploadedScene, std::move(uploadedChunks)});
@@ -48,4 +48,4 @@ UploadedSceneHandle SceneManager::ActiveUploadedScene() const {
   return scenes_[activeScene_].uploadedScene;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

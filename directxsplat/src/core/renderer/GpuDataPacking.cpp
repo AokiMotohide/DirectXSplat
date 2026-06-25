@@ -7,7 +7,7 @@
 
 #include "common/Bounding.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -164,4 +164,4 @@ Status ValidatePipelineParameterBlockLayout(size_t expectedSize, size_t expected
   return Status::Ok();
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

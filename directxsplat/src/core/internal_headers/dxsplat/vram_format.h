@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace dxsplat {
+namespace directxsplat {
 
 enum class VramAttributeFormat : uint32_t {
   Float32 = 0,
@@ -59,4 +59,4 @@ constexpr uint32_t EstimatePackedGaussianStrideBytes(VramFormatSettings settings
   return AlignPackedOffset4(idOffset + 2u * sizeof(uint32_t));
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

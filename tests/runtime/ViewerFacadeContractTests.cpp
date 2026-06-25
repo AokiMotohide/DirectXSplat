@@ -45,12 +45,12 @@ std::filesystem::path WriteTinyPly(const std::filesystem::path& dir) {
 
 TEST_CASE("Viewer cannot SetSplats before Initialize") {
   const std::filesystem::path dir = MakeTempDir("directxsplat_viewer_facade_contract");
-  auto loaded = dxsplat::LoadFromPly(WriteTinyPly(dir));
+  auto loaded = directxsplat::LoadFromPly(WriteTinyPly(dir));
   REQUIRE(loaded.ok());
 
-  dxsplat::Viewer viewer;
+  directxsplat::Viewer viewer;
 
-  const dxsplat::Status status = viewer.SetSplats(loaded.value);
+  const directxsplat::Status status = viewer.SetSplats(loaded.value);
 
   CHECK_FALSE(status.ok);
   CHECK(status.message == "viewer is not initialized");
@@ -60,20 +60,20 @@ TEST_CASE("Viewer cannot SetSplats before Initialize") {
 }
 
 TEST_CASE("Viewer rejects empty GaussianSplats") {
-  dxsplat::Viewer viewer;
-  const dxsplat::GaussianSplats splats;
+  directxsplat::Viewer viewer;
+  const directxsplat::GaussianSplats splats;
 
-  const dxsplat::Status status = viewer.SetSplats(splats);
+  const directxsplat::Status status = viewer.SetSplats(splats);
 
   CHECK_FALSE(status.ok);
   CHECK(status.message == "splats are empty");
 }
 
 TEST_CASE("Viewer accepts empty CameraSet") {
-  dxsplat::Viewer viewer;
-  const dxsplat::CameraSet cameras;
+  directxsplat::Viewer viewer;
+  const directxsplat::CameraSet cameras;
 
-  const dxsplat::Status status = viewer.SetCameras(cameras);
+  const directxsplat::Status status = viewer.SetCameras(cameras);
 
   CHECK(status.ok);
 }

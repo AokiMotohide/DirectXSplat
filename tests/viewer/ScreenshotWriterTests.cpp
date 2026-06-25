@@ -6,7 +6,7 @@
 #include "platform/SwapchainContext.h"
 #include "tools/ScreenshotWriter.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 std::filesystem::path TempPath(const char* name) {
@@ -24,4 +24,4 @@ TEST_CASE("Screenshot writer rejects invalid capture contexts without pending wo
   CHECK(writer.ResolvePendingCapture().ok);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

@@ -6,7 +6,7 @@
 #include "ui/UiLayer.h"
 
 TEST_CASE("Camera UI labels are exact") {
-  const std::array<const char*, 3> labels = dxsplat::UiCameraLabels();
+  const std::array<const char*, 3> labels = directxsplat::UiCameraLabels();
 
   CHECK(std::string(labels[0]) == "Show camera frames");
   CHECK(std::string(labels[1]) == "frame size");
@@ -14,23 +14,23 @@ TEST_CASE("Camera UI labels are exact") {
 }
 
 TEST_CASE("Animation UI labels are exact") {
-  const std::array<const char*, 2> labels = dxsplat::UiAnimationLabels();
+  const std::array<const char*, 2> labels = directxsplat::UiAnimationLabels();
 
   CHECK(std::string(labels[0]) == "Animation");
   CHECK(std::string(labels[1]) == "fps");
 }
 
 TEST_CASE("index clamps when camera set shrinks") {
-  dxsplat::CameraUiState state{};
+  directxsplat::CameraUiState state{};
   state.index = 5;
 
-  dxsplat::ClampCameraUiState(state, 3);
+  directxsplat::ClampCameraUiState(state, 3);
   CHECK(state.index == 2);
 
-  dxsplat::ClampCameraUiState(state, 1);
+  directxsplat::ClampCameraUiState(state, 1);
   CHECK(state.index == 0);
 
   state.index = 4;
-  dxsplat::ClampCameraUiState(state, 0);
+  directxsplat::ClampCameraUiState(state, 0);
   CHECK(state.index == 0);
 }

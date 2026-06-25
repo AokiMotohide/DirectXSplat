@@ -8,7 +8,7 @@
 
 #include "platform/InputState.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class Win32Window {
  public:
@@ -57,4 +57,4 @@ class Win32Window {
   DropCallback onDrop_;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

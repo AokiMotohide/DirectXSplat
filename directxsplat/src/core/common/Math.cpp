@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace dxsplat {
+namespace directxsplat {
 
 Vec3 operator+(const Vec3& a, const Vec3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
 Vec3 operator-(const Vec3& a, const Vec3& b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
@@ -251,4 +251,4 @@ Mat3 ProjectCovarianceToScreen(const Mat3& covariance,
   return out;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

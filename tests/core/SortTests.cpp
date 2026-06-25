@@ -7,7 +7,7 @@
 #include "dxsplat/math.h"
 #include "dxsplat/sort.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 std::vector<size_t> SortIndicesBackToFront(const std::vector<Vec3>& positions, const Mat4& view) {
@@ -74,4 +74,4 @@ TEST_CASE("Sort ordering changes when the camera moves") {
   CHECK(reverseSorted[1] == 1u);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

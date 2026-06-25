@@ -21,7 +21,7 @@
 #include "dxsplat/settings.h"
 #include "dxsplat/status.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class OneSweep;
 
@@ -394,7 +394,7 @@ class GaussianRasterPipeline {
   std::unordered_map<int, Microsoft::WRL::ComPtr<ID3D12PipelineState>> depthRasterPsos_;
 
   Microsoft::WRL::ComPtr<ID3D12CommandSignature> drawCommandSignature_;
-  std::unique_ptr<dxsplat::OneSweep> oneSweep_;
+  std::unique_ptr<directxsplat::OneSweep> oneSweep_;
 
   mutable std::recursive_mutex uploadMutex_;
   Microsoft::WRL::ComPtr<ID3D12Fence> uploadFence_;
@@ -412,4 +412,4 @@ class GaussianRasterPipeline {
   bool gpuTimingEnabled_ = true;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

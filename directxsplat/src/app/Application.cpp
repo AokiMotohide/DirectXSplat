@@ -22,7 +22,7 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace fs = std::filesystem;
 
@@ -993,4 +993,4 @@ std::wstring Application::OpenFileDialog(const wchar_t* filter, const wchar_t* t
   return {};
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

@@ -2,7 +2,7 @@
 
 #include "platform/Image.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct ImageComparison {
   double mae = 0.0;
@@ -14,4 +14,4 @@ struct ImageComparison {
 ImageComparison CompareImages(const internal::ImageRgba8& a, const internal::ImageRgba8& b);
 internal::ImageRgba8 BuildDiffImage(const internal::ImageRgba8& a, const internal::ImageRgba8& b);
 
-}  // namespace dxsplat
+}  // namespace directxsplat

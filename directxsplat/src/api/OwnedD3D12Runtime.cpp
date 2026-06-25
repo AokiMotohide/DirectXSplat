@@ -10,7 +10,7 @@
 #include "api/CameraSetInternal.h"
 #include "api/GaussianSplatsInternal.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -478,4 +478,4 @@ StatusOr<ImageRgba8> OwnedD3D12Runtime::Draw(const GaussianSplats& splats, const
   return ReadbackImage();
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

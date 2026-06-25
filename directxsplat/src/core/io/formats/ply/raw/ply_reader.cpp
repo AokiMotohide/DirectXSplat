@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace dxsplat::io::ply {
+namespace directxsplat::io::ply {
 
 namespace {
 

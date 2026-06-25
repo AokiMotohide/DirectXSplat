@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 std::string ToLower(std::string s);
 std::string Trim(const std::string& s);

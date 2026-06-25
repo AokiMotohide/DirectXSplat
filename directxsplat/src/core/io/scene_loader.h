@@ -4,7 +4,7 @@
 
 #include "dxsplat/io.h"
 
-namespace dxsplat::io {
+namespace directxsplat::io {
 
 class SceneLoader {
  public:

@@ -6,7 +6,7 @@
 #include "app/CameraController.h"
 #include "dxsplat/directxsplat.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct AnimationUiState {
   bool enabled = false;

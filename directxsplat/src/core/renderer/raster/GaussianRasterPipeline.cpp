@@ -16,7 +16,7 @@
 
 #include "renderer/sort/OneSweep.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 namespace {
 
@@ -3059,7 +3059,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = createComputePso(finalizeRootSignature_.Get(), finalizeCs.Get(), finalizePso_, "finalize");
   if (!s.ok) return s;
 
-  oneSweep_ = std::make_unique<dxsplat::OneSweep>();
+  oneSweep_ = std::make_unique<directxsplat::OneSweep>();
   s = oneSweep_->Initialize(device_.Get());
   if (!s.ok) return s;
 
@@ -3885,4 +3885,4 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
 }
 
 
-}  // namespace dxsplat
+}  // namespace directxsplat

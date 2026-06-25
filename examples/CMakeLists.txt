@@ -4,18 +4,26 @@ add_executable(DirectXSplatBasicViewerExample
 target_link_libraries(DirectXSplatBasicViewerExample PRIVATE DirectXSplat::DirectXSplat)
 target_compile_features(DirectXSplatBasicViewerExample PRIVATE cxx_std_20)
 
-add_executable(DirectXSplatConfiguredViewerExample
-  configured_viewer/main.cpp
+add_executable(DirectXSplatCameraViewerExample
+  camera_viewer/main.cpp
 )
-target_link_libraries(DirectXSplatConfiguredViewerExample PRIVATE DirectXSplat::DirectXSplat)
-target_compile_features(DirectXSplatConfiguredViewerExample PRIVATE cxx_std_20)
+target_link_libraries(DirectXSplatCameraViewerExample PRIVATE DirectXSplat::DirectXSplat)
+target_compile_features(DirectXSplatCameraViewerExample PRIVATE cxx_std_20)
+
+add_executable(DirectXSplatBasicDrawExample
+  basic_draw/main.cpp
+)
+target_link_libraries(DirectXSplatBasicDrawExample PRIVATE DirectXSplat::DirectXSplat)
+target_compile_features(DirectXSplatBasicDrawExample PRIVATE cxx_std_20)
 
 if(COMMAND directxsplat_apply_project_warnings)
   directxsplat_apply_project_warnings(DirectXSplatBasicViewerExample)
-  directxsplat_apply_project_warnings(DirectXSplatConfiguredViewerExample)
+  directxsplat_apply_project_warnings(DirectXSplatCameraViewerExample)
+  directxsplat_apply_project_warnings(DirectXSplatBasicDrawExample)
 endif()
 
 if(COMMAND directxsplat_stage_dxc_runtime)
   directxsplat_stage_dxc_runtime(DirectXSplatBasicViewerExample)
-  directxsplat_stage_dxc_runtime(DirectXSplatConfiguredViewerExample)
+  directxsplat_stage_dxc_runtime(DirectXSplatCameraViewerExample)
+  directxsplat_stage_dxc_runtime(DirectXSplatBasicDrawExample)
 endif()

@@ -12,7 +12,7 @@
 #include "dxsplat/vram_format.h"
 #include "renderer/diagnostics.h"
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 std::string ReadTextFile(const std::filesystem::path& path) {
@@ -148,4 +148,4 @@ TEST_CASE("background loader worker catches load materialization failures") {
   CHECK(loader.find("item = makeErrorItem(index, \"scene traversal load failed\");") != std::string::npos);
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat

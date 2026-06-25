@@ -7,7 +7,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat::io::ply {
+namespace directxsplat::io::ply {
 
 enum class PlyFormat {
   Ascii,

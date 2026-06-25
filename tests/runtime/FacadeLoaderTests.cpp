@@ -25,14 +25,14 @@ void WriteFile(const std::filesystem::path& path, const std::string& data) {
 }  // namespace
 
 TEST_CASE("LoadFromPly rejects empty path") {
-  const auto loaded = dxsplat::LoadFromPly({});
+  const auto loaded = directxsplat::LoadFromPly({});
 
   CHECK_FALSE(loaded.ok());
   CHECK(loaded.status.message == "scene path is empty");
 }
 
 TEST_CASE("LoadFromPly rejects .txt path") {
-  const auto loaded = dxsplat::LoadFromPly("scene.txt");
+  const auto loaded = directxsplat::LoadFromPly("scene.txt");
 
   CHECK_FALSE(loaded.ok());
   CHECK(loaded.status.message.find("expected .ply") != std::string::npos);
@@ -59,7 +59,7 @@ TEST_CASE("LoadCameraSet reads camera json") {
             "}"
             "]");
 
-  const auto loaded = dxsplat::LoadCameraSet(path);
+  const auto loaded = directxsplat::LoadCameraSet(path);
 
   REQUIRE(loaded.ok());
   REQUIRE(loaded.value.cameras.size() == 2u);
@@ -115,10 +115,55 @@ TEST_CASE("LoadCameraSet rejects malformed matrices") {
             "\"height\":1"
             "}]");
 
-  const auto loaded = dxsplat::LoadCameraSet(path);
+  const auto loaded = directxsplat::LoadCameraSet(path);
 
   CHECK_FALSE(loaded.ok());
   CHECK(loaded.status.message.find("invalid camera matrix") != std::string::npos);
+
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("LoadCameraSet reads position rotation camera json") {
+  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_position_camera_json");
+  const std::filesystem::path path = dir / "cameras.json";
+  WriteFile(path,
+            "[{"
+            "\"img_name\":\"garden camera\","
+            "\"width\":800,"
+            "\"height\":600,"
+            "\"position\":[1,2,3],"
+            "\"rotation\":[[0,-1,0],[1,0,0],[0,0,1]],"
+            "\"fx\":100,"
+            "\"fy\":200"
+            "}]");
+
+  const auto loaded = directxsplat::LoadCameraSet(path);
+
+  REQUIRE(loaded.ok());
+  REQUIRE(loaded.value.cameras.size() == 1u);
+  const directxsplat::CameraParams& camera = loaded.value.cameras.front();
+  const std::array<float, 16> expectedExtrinsic{
+      0.0f, 1.0f, 0.0f, -2.0f,
+      -1.0f, 0.0f, 0.0f, 1.0f,
+      0.0f, 0.0f, 1.0f, -3.0f,
+      0.0f, 0.0f, 0.0f, 1.0f,
+  };
+  const std::array<float, 9> expectedIntrinsic{
+      100.0f, 0.0f, 400.0f,
+      0.0f, 200.0f, 300.0f,
+      0.0f, 0.0f, 1.0f,
+  };
+
+  CHECK(camera.name == "garden camera");
+  CHECK(camera.width == 800);
+  CHECK(camera.height == 600);
+  for (size_t index = 0; index < expectedExtrinsic.size(); ++index) {
+    CHECK(camera.extrinsic[index] == doctest::Approx(expectedExtrinsic[index]));
+  }
+  for (size_t index = 0; index < expectedIntrinsic.size(); ++index) {
+    CHECK(camera.intrinsic[index] == doctest::Approx(expectedIntrinsic[index]));
+  }
 
   std::error_code ec;
   std::filesystem::remove_all(dir, ec);
@@ -135,11 +180,11 @@ TEST_CASE("LoadCameraSet reads DirectXSplat camera json") {
             "\"fovY\":1.0471975512"
             "}]");
 
-  const auto loaded = dxsplat::LoadCameraSet(path);
+  const auto loaded = directxsplat::LoadCameraSet(path);
 
   REQUIRE(loaded.ok());
   REQUIRE(loaded.value.cameras.size() == 1u);
-  const dxsplat::CameraParams& camera = loaded.value.cameras.front();
+  const directxsplat::CameraParams& camera = loaded.value.cameras.front();
   CHECK(camera.name == "direct camera");
   CHECK(camera.width == 1600);
   CHECK(camera.height == 900);
@@ -159,8 +204,8 @@ TEST_CASE("LoadCameraSet reads DirectXSplat camera json") {
 }
 
 TEST_CASE("MakeOrbitCameraSet returns empty for empty splats") {
-  const dxsplat::GaussianSplats splats;
-  const dxsplat::CameraSet cameras = dxsplat::MakeOrbitCameraSet(splats, 4, 1600, 900);
+  const directxsplat::GaussianSplats splats;
+  const directxsplat::CameraSet cameras = directxsplat::MakeOrbitCameraSet(splats, 4, 1600, 900);
 
   CHECK(cameras.cameras.empty());
 }

@@ -5,7 +5,7 @@
 #include "app/Application.h"
 #include "dxsplat/directxsplat.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 class Viewer::Impl {
  public:
@@ -21,4 +21,4 @@ class Viewer::Impl {
   bool initialized_ = false;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

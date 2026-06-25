@@ -12,7 +12,7 @@
 
 #include "dxsplat/status.h"
 
-namespace dxsplat::internal {
+namespace directxsplat::internal {
 
 class SwapchainContext {
  public:
@@ -25,14 +25,14 @@ class SwapchainContext {
     uint64_t fenceValue = 0;
   };
 
-  dxsplat::Status Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer);
-  dxsplat::Status Shutdown();
+  directxsplat::Status Initialize(HWND hwnd, uint32_t width, uint32_t height, bool enableDebugLayer);
+  directxsplat::Status Shutdown();
 
-  dxsplat::Status Resize(uint32_t width, uint32_t height);
+  directxsplat::Status Resize(uint32_t width, uint32_t height);
 
-  dxsplat::Status BeginFrame(bool waitForFrameLatency = false);
-  dxsplat::Status EndFrame(bool vsync);
-  dxsplat::Status WaitForGpu();
+  directxsplat::Status BeginFrame(bool waitForFrameLatency = false);
+  directxsplat::Status EndFrame(bool vsync);
+  directxsplat::Status WaitForGpu();
   void NotifyQueueLost();
 
   ID3D12Device* Device() const;
@@ -56,13 +56,13 @@ class SwapchainContext {
   ID3D12DescriptorHeap* ImGuiSrvHeap() const;
 
  private:
-  dxsplat::Status CreateDeviceAndSwapchain(bool enableDebugLayer);
-  dxsplat::Status CreateFrameResources();
-  dxsplat::Status CreateImGuiHeap();
-  dxsplat::Status SignalFrame(Frame& frame);
-  dxsplat::Status WaitForFrameLatency();
-  dxsplat::Status WaitForFenceValue(uint64_t value);
-  dxsplat::Status CheckDeviceRemoved();
+  directxsplat::Status CreateDeviceAndSwapchain(bool enableDebugLayer);
+  directxsplat::Status CreateFrameResources();
+  directxsplat::Status CreateImGuiHeap();
+  directxsplat::Status SignalFrame(Frame& frame);
+  directxsplat::Status WaitForFrameLatency();
+  directxsplat::Status WaitForFenceValue(uint64_t value);
+  directxsplat::Status CheckDeviceRemoved();
   std::string DebugMessages() const;
 
   HWND hwnd_ = nullptr;
@@ -93,4 +93,4 @@ class SwapchainContext {
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> imguiSrvHeap_;
 };
 
-}  // namespace dxsplat::internal
+}  // namespace directxsplat::internal

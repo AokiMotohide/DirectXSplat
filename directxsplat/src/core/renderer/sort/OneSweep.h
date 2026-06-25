@@ -12,7 +12,7 @@
 #include "dxsplat/status.h"
 #include "GPUSorting/GPUSortingD3D12/GPUSorting.h"
 
-namespace dxsplat {
+namespace directxsplat {
 
 struct OneSweepDispatch {
   ID3D12GraphicsCommandList* commandList = nullptr;
@@ -94,4 +94,4 @@ class OneSweep {
   std::unique_ptr<Kernel> digitBinningKernel_;
 };
 
-}  // namespace dxsplat
+}  // namespace directxsplat

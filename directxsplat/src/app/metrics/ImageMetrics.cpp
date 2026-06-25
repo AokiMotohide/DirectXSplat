@@ -5,7 +5,7 @@
 #include <new>
 #include <stdexcept>
 
-namespace dxsplat {
+namespace directxsplat {
 namespace {
 
 ImageComparison InvalidComparison() {
@@ -101,4 +101,4 @@ internal::ImageRgba8 BuildDiffImage(const internal::ImageRgba8& a, const interna
   return out;
 }
 
-}  // namespace dxsplat
+}  // namespace directxsplat
