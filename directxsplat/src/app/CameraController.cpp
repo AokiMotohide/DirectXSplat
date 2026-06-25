@@ -230,7 +230,7 @@ void CameraController::UpdateTrackball(float, float orbitDeltaX, float orbitDelt
   state_.position = state_.orbitPivot + after * state_.orbitDistance;
   const Vec3 f = SafeNormalize(state_.orbitPivot - state_.position, Forward());
   state_.yaw = WrapAngle(std::atan2(f.x, f.z));
-  state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
+  state_.pitch = -std::asin(std::clamp(f.y, -1.0f, 1.0f));
 }
 
 void CameraController::FocusBounds(const Aabb& bounds) {
@@ -297,17 +297,16 @@ void CameraController::SnapToCameraParams(const CameraParams& camera) {
       e[9],
       e[10],
   });
-  const Vec3 up = Normalize(Vec3{
-      -e[4],
-      -e[5],
-      -e[6],
-  });
-  if (!Finite(renderState.position) || !Finite(forward) || !Finite(up) ||
-      Length(forward) <= 1e-6f || Length(up) <= 1e-6f) {
+  const Vec3 poseUp = Normalize(CameraPoseUpFromExtrinsic(e));
+  if (!Finite(renderState.position) || !Finite(forward) || !Finite(poseUp) ||
+      Length(forward) <= 1e-6f || Length(poseUp) <= 1e-6f) {
     return;
   }
 
-  SetPoseFromForwardUp(renderState.position, forward, up);
+  SetPoseFromForwardUp(renderState.position, forward, poseUp);
+  matrixOverride_ = CameraMatrixOverride{};
+  matrixOverride_->view = renderState.view;
+  matrixOverride_->position = renderState.position;
 }
 
 bool CameraController::SnapToClosestInputCamera(const std::vector<InputCamera>& cameras) {
@@ -343,9 +342,6 @@ Mat4 CameraController::ProjectionMatrix() const {
 }
 
 Mat4 CameraController::ProjectionMatrixForAspect(float aspect) const {
-  if (matrixOverride_.has_value()) {
-    return matrixOverride_->proj;
-  }
   return Perspective(state_.fovYRadians, std::max(aspect, 0.01f), state_.nearPlane, state_.farPlane);
 }
 
@@ -392,7 +388,7 @@ void CameraController::SetPoseFromForwardUp(const Vec3& position, const Vec3& fo
   const Vec3 inputUp = SafeNormalize(up, {0.0f, 1.0f, 0.0f});
   state_.position = position;
   state_.yaw = WrapAngle(std::atan2(f.x, f.z));
-  state_.pitch = std::asin(std::clamp(f.y, -1.0f, 1.0f));
+  state_.pitch = -std::asin(std::clamp(f.y, -1.0f, 1.0f));
   Vec3 baseRight{};
   Vec3 baseUp{};
   BuildViewBasis(Forward(), 0.0f, baseRight, baseUp);

@@ -2,7 +2,9 @@
 
 #include <cmath>
 
+#include "api/CameraSetInternal.h"
 #include "app/CameraPathAnimator.h"
+#include "dxsplat/math.h"
 
 namespace {
 
@@ -24,6 +26,24 @@ directxsplat::CameraParams MakeCamera(float x, float y, float z) {
   return camera;
 }
 
+directxsplat::CameraParams MakeLoadedCamera() {
+  directxsplat::CameraParams camera{};
+  camera.width = 800;
+  camera.height = 600;
+  camera.intrinsic = {
+      100.0f, 0.0f, 400.0f,
+      0.0f, 200.0f, 300.0f,
+      0.0f, 0.0f, 1.0f,
+  };
+  camera.extrinsic = {
+      1.0f, 0.0f, 0.0f, -1.0f,
+      0.0f, 0.8660254f, 0.5f, -3.2320508f,
+      0.0f, -0.5f, 0.8660254f, -1.5980762f,
+      0.0f, 0.0f, 0.0f, 1.0f,
+  };
+  return camera;
+}
+
 directxsplat::CameraSet MakeCameraSet(size_t count) {
   directxsplat::CameraSet cameras{};
   for (size_t i = 0; i < count; ++i) {
@@ -35,6 +55,12 @@ directxsplat::CameraSet MakeCameraSet(size_t count) {
 bool Finite(const directxsplat::CameraState& state) {
   return std::isfinite(state.position.x) && std::isfinite(state.position.y) && std::isfinite(state.position.z) &&
          std::isfinite(state.yaw) && std::isfinite(state.pitch) && std::isfinite(state.roll);
+}
+
+void CheckMatrix(const directxsplat::Mat4& actual, const directxsplat::Mat4& expected) {
+  for (size_t i = 0; i < actual.m.size(); ++i) {
+    CHECK(actual.m[i] == doctest::Approx(expected.m[i]));
+  }
 }
 
 }
@@ -94,11 +120,40 @@ TEST_CASE("Camera snap uses default viewer fov") {
   directxsplat::CameraState state = controller.State();
   state.fovYRadians = 0.75f;
   controller.SetState(state);
+  const directxsplat::CameraParams camera = MakeLoadedCamera();
+  const directxsplat::CameraRenderState expected =
+      directxsplat::CameraRenderStateFromCameraParams(camera, state.nearPlane, state.farPlane);
 
-  controller.SnapToCameraParams(MakeCamera(1.0f, 2.0f, 3.0f));
+  controller.SnapToCameraParams(camera);
 
   CHECK(controller.State().position.x == doctest::Approx(1.0f));
   CHECK(controller.State().position.y == doctest::Approx(2.0f));
   CHECK(controller.State().position.z == doctest::Approx(3.0f));
   CHECK(controller.State().fovYRadians == doctest::Approx(directxsplat::kDefaultCameraFovYRadians));
+  CHECK(controller.HasMatrixOverride());
+  CheckMatrix(controller.ViewMatrix(), expected.view);
+  CheckMatrix(controller.ProjectionMatrixForAspect(1.0f),
+              directxsplat::Perspective(directxsplat::kDefaultCameraFovYRadians, 1.0f,
+                                         controller.State().nearPlane, controller.State().farPlane));
+
+  controller.UpdateFps(0.0f, false, false, false, false, false, false, 0.0f, 0.0f, 0.0f, true);
+
+  CHECK_FALSE(controller.HasMatrixOverride());
+  CheckMatrix(controller.ViewMatrix(), expected.view);
+}
+
+TEST_CASE("Animator preserves loaded camera basis") {
+  directxsplat::CameraSet cameras{};
+  cameras.cameras.push_back(MakeLoadedCamera());
+  directxsplat::CameraPathAnimator animator;
+  animator.SetCameras(cameras);
+
+  directxsplat::CameraState state{};
+  REQUIRE(animator.Evaluate(state));
+
+  directxsplat::CameraController controller;
+  controller.SetState(state);
+  const directxsplat::CameraRenderState expected =
+      directxsplat::CameraRenderStateFromCameraParams(cameras.cameras[0], state.nearPlane, state.farPlane);
+  CheckMatrix(controller.ViewMatrix(), expected.view);
 }

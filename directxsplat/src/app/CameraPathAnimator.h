@@ -31,7 +31,17 @@ class CameraPathAnimator {
     Quat orientation{};
   };
 
+  struct PoseTangent {
+    Vec3 rotation{};
+    Vec3 translation{};
+  };
+
   static CameraState CameraStateFromPose(const Pose& pose);
+  static Pose ExpPose(const PoseTangent& tangent);
+  static PoseTangent LogPose(const Pose& pose);
+  static Pose InversePose(const Pose& pose);
+  static Pose ComposePose(const Pose& a, const Pose& b);
+  static Pose InterpolatePose(const Pose& p0, const Pose& p1, const Pose& p2, const Pose& p3, float t);
 
   std::vector<Pose> poses_;
   float time_ = 0.0f;

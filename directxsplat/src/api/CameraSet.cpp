@@ -224,6 +224,13 @@ CameraRenderState CameraRenderStateFromCameraParams(const CameraParams& camera, 
   return out;
 }
 
+Vec3 CameraPoseUpFromExtrinsic(const std::array<float, 16>& e) {
+  const Vec3 right{e[0], e[1], e[2]};
+  const Vec3 down{e[4], e[5], e[6]};
+  const Vec3 forward{e[8], e[9], e[10]};
+  return Dot(Cross(down, forward), right) >= 0.0f ? down : down * -1.0f;
+}
+
 CameraParams CameraParamsFromInputCamera(const InputCamera& input, uint32_t width, uint32_t height) {
   CameraParams camera{};
   camera.name = input.name;
@@ -243,14 +250,13 @@ CameraParams CameraParamsFromInputCamera(const InputCamera& input, uint32_t widt
 
 InputCamera InputCameraFromCameraParams(const CameraParams& camera, size_t index) {
   const auto& e = camera.extrinsic;
-  const Vec3 down = Normalize(Vec3{e[4], e[5], e[6]});
   const Vec3 forward = Normalize(Vec3{e[8], e[9], e[10]});
-  const Vec3 up = down * -1.0f;
-  Vec3 right = Normalize(Cross(up, forward));
+  const Vec3 poseUp = Normalize(CameraPoseUpFromExtrinsic(e));
+  Vec3 right = Normalize(Cross(poseUp, forward));
   Vec3 orthoUp = Normalize(Cross(forward, right));
   if (!Finite(right) || Length(right) <= 1e-6f || !Finite(orthoUp) || Length(orthoUp) <= 1e-6f) {
     right = Normalize(Vec3{e[0], e[1], e[2]});
-    orthoUp = up;
+    orthoUp = poseUp;
   }
 
   InputCamera out{};

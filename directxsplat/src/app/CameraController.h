@@ -38,7 +38,6 @@ struct CameraState {
 
 struct CameraMatrixOverride {
   Mat4 view{};
-  Mat4 proj{};
   Vec3 position{};
 };
 
