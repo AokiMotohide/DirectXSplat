@@ -538,7 +538,7 @@ float4 PSMainBeauty(BeautyVSOut i) : SV_Target {
   }
 
   if (gRenderType == 1u) {
-    return float4(float3(alpha, alpha, alpha), 1.0f);
+    return float4(1.0f, 1.0f, 1.0f, alpha);
   }
   if (gRenderType == 2u) {
     const float depth = 1.0f - saturate(i.ndcDepth);

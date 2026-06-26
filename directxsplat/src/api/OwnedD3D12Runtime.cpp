@@ -336,10 +336,11 @@ RenderTargetBinding OwnedD3D12Runtime::TargetBinding(const DrawOptions& options)
   target.colorStateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
   target.transitionMode = ResourceTransitionMode::LibraryManaged;
   target.clearColor = true;
-  target.clearColorValue[0] = options.background[0];
-  target.clearColorValue[1] = options.background[1];
-  target.clearColorValue[2] = options.background[2];
-  target.clearColorValue[3] = 1.0f;
+  const bool alphaView = options.renderType == RenderType::Alpha;
+  target.clearColorValue[0] = alphaView ? 0.0f : options.background[0];
+  target.clearColorValue[1] = alphaView ? 0.0f : options.background[1];
+  target.clearColorValue[2] = alphaView ? 0.0f : options.background[2];
+  target.clearColorValue[3] = alphaView ? 0.0f : 1.0f;
   target.viewport.TopLeftX = 0.0f;
   target.viewport.TopLeftY = 0.0f;
   target.viewport.Width = static_cast<float>(options.width);

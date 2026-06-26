@@ -265,10 +265,11 @@ Status Application::Run() {
     target.viewport = d3d_.Viewport();
     target.scissor = d3d_.ScissorRect();
     target.clearColor = true;
-    target.clearColorValue[0] = renderSettings_.backgroundColor.x;
-    target.clearColorValue[1] = renderSettings_.backgroundColor.y;
-    target.clearColorValue[2] = renderSettings_.backgroundColor.z;
-    target.clearColorValue[3] = 1.0f;
+    const bool alphaView = SanitizeRenderType(renderSettings_.renderType) == RenderType::Alpha;
+    target.clearColorValue[0] = alphaView ? 0.0f : renderSettings_.backgroundColor.x;
+    target.clearColorValue[1] = alphaView ? 0.0f : renderSettings_.backgroundColor.y;
+    target.clearColorValue[2] = alphaView ? 0.0f : renderSettings_.backgroundColor.z;
+    target.clearColorValue[3] = alphaView ? 0.0f : 1.0f;
     if (activeUploadedScene.IsValid()) {
       RenderFrameContext frameContext{};
       frameContext.fence = d3d_.Fence();
