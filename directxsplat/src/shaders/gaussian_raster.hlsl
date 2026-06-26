@@ -21,6 +21,7 @@ struct RasterGaussian {
   float alphaCutPower;
   float4 conicOpacity;
   float3 color;
+  float viewDistance;
 };
 
 cbuffer PrepConstants : register(b0) {
@@ -460,6 +461,7 @@ bool BuildRasterGaussian(uint sceneIndex, out RasterGaussian outG) {
   outG.alphaCutPower = alphaCutPower;
   outG.conicOpacity = float4(conic, opacity);
   outG.color = color;
+  outG.viewDistance = length(posView4.xyz / max(abs(posView4.w), 1e-6f));
   return true;
 }
 
@@ -470,6 +472,7 @@ struct BeautyVSOut {
   nointerpolation float4 conicOpacity : TEXCOORD2;
   nointerpolation float alphaCutPower : TEXCOORD3;
   nointerpolation float ndcDepth : TEXCOORD4;
+  nointerpolation float viewDistance : TEXCOORD5;
 };
 
 struct DepthVSOut {
@@ -498,6 +501,7 @@ BeautyVSOut VSMainBeauty(uint vertexId : SV_VertexID, uint instanceId : SV_Insta
   o.conicOpacity = g.conicOpacity;
   o.alphaCutPower = g.alphaCutPower;
   o.ndcDepth = saturate(g.clipPos.z / max(g.clipPos.w, 1e-6));
+  o.viewDistance = g.viewDistance;
   return o;
 }
 
@@ -541,8 +545,8 @@ float4 PSMainBeauty(BeautyVSOut i) : SV_Target {
     return float4(1.0f, 1.0f, 1.0f, alpha);
   }
   if (gRenderType == 2u) {
-    const float depth = 1.0f - saturate(i.ndcDepth);
-    return float4(float3(depth, depth, depth), 1.0f);
+    const float depth = 1.0f - saturate(i.viewDistance / 10.0f);
+    return float4(depth, depth, depth, alpha);
   }
 
   float3 color = i.color;
