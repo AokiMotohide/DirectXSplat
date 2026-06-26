@@ -19,21 +19,23 @@ enum class NavigatorMode {
 };
 
 inline constexpr float kDefaultCameraFovYRadians = 1.0471975512f;
+inline constexpr float kDefaultCameraNearPlane = 0.01f;
+inline constexpr float kDefaultCameraFarPlane = 100.0f;
 
 struct CameraState {
-  Vec3 position{0.0f, 0.0f, -3.0f};
+  Vec3 position{0.0f, 0.0f, 0.0f};
   float yaw = 0.0f;
   float pitch = 0.0f;
   float roll = 0.0f;
   float fovYRadians = kDefaultCameraFovYRadians;
-  float nearPlane = 0.1f;
-  float farPlane = 5000.0f;
+  float nearPlane = kDefaultCameraNearPlane;
+  float farPlane = kDefaultCameraFarPlane;
   float movementSpeed = 2.5f;
   float rotationSpeed = 1.0f;
   bool useAcceleration = false;
   NavigatorMode navigatorMode = NavigatorMode::Fps;
   Vec3 orbitPivot{0.0f, 0.0f, 0.0f};
-  float orbitDistance = 3.0f;
+  float orbitDistance = 2.0f;
 };
 
 struct CameraMatrixOverride {

@@ -38,7 +38,6 @@ class Application {
   void UpdateInput(float dt);
   void UpdateAnimation(float dt);
   void UpdateBackgroundSceneLoading();
-  void ApplyInitialFraming(const Scene& scene);
   void ApplyCameraSetToActiveScene();
   void CaptureActiveSceneCameraSet();
   void UpdateSelectedInputCamera();

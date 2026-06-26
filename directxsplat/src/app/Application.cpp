@@ -14,7 +14,6 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "api/CameraSetInternal.h"
-#include "directxsplat/bounding.h"
 #include "tools/ScenePathValidation.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -372,7 +371,6 @@ Status Application::Run() {
         CaptureActiveSceneCameraSet();
       }
       UpdateSelectedInputCamera();
-      ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
     actions.prevScene = [this]() {
       StopAnimationOnCameraEdit(animationUi_, true);
@@ -389,7 +387,6 @@ Status Application::Run() {
         CaptureActiveSceneCameraSet();
       }
       UpdateSelectedInputCamera();
-      ApplyInitialFraming(*sceneManager_.ActiveScene());
     };
     actions.selectCamera = [this](int32_t index) { SelectCameraIndex(index); };
 
@@ -479,9 +476,6 @@ Status Application::SetScene(Scene scene) {
   }
   ApplyCameraSetToActiveScene();
   UpdateSelectedInputCamera();
-  if (sceneManager_.ActiveScene() != nullptr) {
-    ApplyInitialFraming(*sceneManager_.ActiveScene());
-  }
   statusMessage_.clear();
   return Status::Ok();
 }
@@ -639,29 +633,12 @@ void Application::UpdateBackgroundSceneLoading() {
                 CaptureActiveSceneCameraSet();
               }
               UpdateSelectedInputCamera();
-              ApplyInitialFraming(*sceneManager_.ActiveScene());
             }
           }
         }
         traversalActivateRequested_ = false;
       }
     }
-  }
-}
-
-void Application::ApplyInitialFraming(const Scene& scene) {
-  StopAnimationOnCameraEdit(animationUi_, true);
-  std::vector<Vec3> points;
-  for (const auto& set : scene.splatSets) {
-    for (const auto& g : set.gaussians) {
-      points.push_back(g.position);
-    }
-  }
-  const Aabb robust = ComputePercentileAabb(points, 0.25f, 99.75f);
-  if (robust.valid) {
-    camera_.FocusBounds(robust);
-  } else if (scene.sceneBounds.valid) {
-    camera_.FocusBounds(scene.sceneBounds);
   }
 }
 
@@ -803,7 +780,6 @@ void Application::RequestTraversalScene(size_t index, bool activateWhenReady) {
         CaptureActiveSceneCameraSet();
       }
       UpdateSelectedInputCamera();
-      ApplyInitialFraming(*sceneManager_.ActiveScene());
     }
     traversalActivateRequested_ = false;
   } else {

@@ -112,14 +112,15 @@ void CameraController::SetState(const CameraState& state) {
   }
   state_.fovYRadians = Finite(state_.fovYRadians) ? std::clamp(state_.fovYRadians, 0.017453292f, 3.12413936f)
                                                    : kDefaultCameraFovYRadians;
-  state_.nearPlane = Finite(state_.nearPlane) ? std::max(state_.nearPlane, 0.0001f) : 0.1f;
-  state_.farPlane = Finite(state_.farPlane) ? std::max(state_.farPlane, state_.nearPlane + 0.001f) : 5000.0f;
+  state_.nearPlane = Finite(state_.nearPlane) ? std::max(state_.nearPlane, 0.0001f) : kDefaultCameraNearPlane;
+  state_.farPlane = Finite(state_.farPlane) ? std::max(state_.farPlane, state_.nearPlane + 0.001f)
+                                             : kDefaultCameraFarPlane;
   state_.movementSpeed = Finite(state_.movementSpeed) ? std::max(state_.movementSpeed, 0.0f) : 2.5f;
   state_.rotationSpeed = Finite(state_.rotationSpeed) ? std::max(state_.rotationSpeed, 0.0f) : 1.0f;
   if (!Finite(state_.orbitPivot)) {
     state_.orbitPivot = {};
   }
-  state_.orbitDistance = Finite(state_.orbitDistance) ? std::max(state_.orbitDistance, 0.01f) : 3.0f;
+  state_.orbitDistance = Finite(state_.orbitDistance) ? std::max(state_.orbitDistance, 0.01f) : 2.0f;
   ClampPitch();
 }
 
