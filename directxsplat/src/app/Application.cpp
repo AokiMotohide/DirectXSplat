@@ -522,13 +522,14 @@ void Application::UpdateInput(float dt) {
     float lookDy = mouseLook ? ClampFinite(input.mouseDeltaY, -240.0f, 240.0f, 0.0f) : 0.0f;
     float rollDelta = 0.0f;
     constexpr float keyLookRate = 500.0f;
+    constexpr float keyRollRate = 3.14159265359f / 0.002f;
     if (!io.WantCaptureKeyboard) {
       if (input.KeyDown('J')) lookDx -= keyLookRate * dt;
       if (input.KeyDown('L')) lookDx += keyLookRate * dt;
       if (input.KeyDown('I')) lookDy -= keyLookRate * dt;
       if (input.KeyDown('K')) lookDy += keyLookRate * dt;
-      if (input.KeyDown('U')) rollDelta -= keyLookRate * dt;
-      if (input.KeyDown('O')) rollDelta += keyLookRate * dt;
+      if (input.KeyDown('Q')) rollDelta -= keyRollRate * dt;
+      if (input.KeyDown('E')) rollDelta += keyRollRate * dt;
     }
     rollDelta = ClampFinite(rollDelta, -240.0f, 240.0f, 0.0f);
     const bool rotationEnabled = mouseLook || lookDx != 0.0f || lookDy != 0.0f || rollDelta != 0.0f;
@@ -536,8 +537,8 @@ void Application::UpdateInput(float dt) {
     const bool moveBackward = !io.WantCaptureKeyboard && input.KeyDown('S');
     const bool moveLeft = !io.WantCaptureKeyboard && input.KeyDown('A');
     const bool moveRight = !io.WantCaptureKeyboard && input.KeyDown('D');
-    const bool moveUp = !io.WantCaptureKeyboard && input.KeyDown('E');
-    const bool moveDown = !io.WantCaptureKeyboard && input.KeyDown('Q');
+    const bool moveUp = false;
+    const bool moveDown = false;
     const bool moving = moveForward || moveBackward || moveLeft || moveRight || moveUp || moveDown;
     StopAnimationOnCameraEdit(animationUi_, rotationEnabled || moving);
     if (camera_.HasMatrixOverride() && (rotationEnabled || moving)) {
