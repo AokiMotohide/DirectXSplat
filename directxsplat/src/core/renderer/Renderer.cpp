@@ -588,6 +588,8 @@ class Renderer::Impl {
     std::atomic_uint32_t activeUsers{0};
     Microsoft::WRL::ComPtr<ID3D12Fence> inFlightFence;
     uint64_t inFlightFenceValue = 0;
+    Microsoft::WRL::ComPtr<ID3D12Fence> reservedFence;
+    uint64_t reservedFenceValue = 0;
   };
 
   struct SceneRecord {
@@ -1004,6 +1006,56 @@ class Renderer::Impl {
     return false;
   }
 
+  bool ReservationMatchesFrame(const ResidencyInstanceRecord& instance, const RenderFrameContext* frameContext) const {
+    return frameContext != nullptr && frameContext->fence != nullptr && instance.reservedFence.Get() == frameContext->fence &&
+           instance.reservedFenceValue == frameContext->submissionFenceValue;
+  }
+
+  void ClearResidencyReservation(ResidencyInstanceRecord& instance) const {
+    instance.reservedFence.Reset();
+    instance.reservedFenceValue = 0;
+  }
+
+  bool TryAcquireReservedResidencyInstance(const std::shared_ptr<ResidencyInstanceRecord>& instance,
+                                           const RenderFrameContext* frameContext) const {
+    if (instance == nullptr || frameContext == nullptr || instance->activeUsers.load(std::memory_order_acquire) != 0) {
+      return false;
+    }
+    std::lock_guard<std::mutex> instanceLock(instance->mutex);
+    if (!ReservationMatchesFrame(*instance, frameContext)) {
+      return false;
+    }
+    ClearResidencyReservation(*instance);
+    instance->activeUsers.fetch_add(1, std::memory_order_release);
+    return true;
+  }
+
+  bool HasOtherResidencyReservation(const std::shared_ptr<ResidencyInstanceRecord>& instance,
+                                    const RenderFrameContext* frameContext,
+                                    uint64_t completedValue) const {
+    if (instance == nullptr) {
+      return false;
+    }
+    std::lock_guard<std::mutex> instanceLock(instance->mutex);
+    if (instance->reservedFenceValue == 0) {
+      return false;
+    }
+    if (IsFenceComplete(instance->reservedFence.Get(), instance->reservedFenceValue, completedValue)) {
+      ClearResidencyReservation(*instance);
+      return false;
+    }
+    return !ReservationMatchesFrame(*instance, frameContext);
+  }
+
+  void ReserveResidencyInstance(const std::shared_ptr<ResidencyInstanceRecord>& instance, const RenderFrameContext* frameContext) const {
+    if (instance == nullptr || frameContext == nullptr || frameContext->fence == nullptr || frameContext->submissionFenceValue == 0) {
+      return;
+    }
+    std::lock_guard<std::mutex> instanceLock(instance->mutex);
+    instance->reservedFence = frameContext->fence;
+    instance->reservedFenceValue = frameContext->submissionFenceValue;
+  }
+
   Status CheckFenceWaitDeviceLost() {
     if (IsDeviceLost()) {
       return Status::Error("renderer device lost");
@@ -1221,7 +1273,14 @@ class Renderer::Impl {
     const uint64_t completedFenceValue = CompletedFenceValue(frameContext);
     std::lock_guard<std::mutex> sceneLock(record->mutex);
     for (const std::shared_ptr<ResidencyInstanceRecord>& instance : record->instances) {
+      if (TryAcquireReservedResidencyInstance(instance, frameContext)) {
+        outInstance = instance;
+        return Status::Ok();
+      }
+    }
+    for (const std::shared_ptr<ResidencyInstanceRecord>& instance : record->instances) {
       if (instance != nullptr && instance->activeUsers.load(std::memory_order_acquire) == 0 &&
+          !HasOtherResidencyReservation(instance, frameContext, completedFenceValue) &&
           IsInstanceGpuIdle(instance, completedFenceValue)) {
         instance->activeUsers.fetch_add(1, std::memory_order_release);
         outInstance = instance;
@@ -2557,7 +2616,11 @@ class Renderer::Impl {
     }
     ResidencyUse residencyUse{this, instance, nullptr, true};
     result = {};
-    return PrepareSceneInternal(record, instance, record->version, input, result.stats);
+    Status prepared = PrepareSceneInternal(record, instance, record->version, input, result.stats);
+    if (prepared.ok) {
+      ReserveResidencyInstance(instance, frameContext);
+    }
+    return prepared;
   } catch (const std::bad_alloc&) {
     return Status::Error("prepare allocation failed");
   } catch (const std::length_error&) {

@@ -51,7 +51,7 @@ Status ValidateReadbackLayout(uint32_t width, uint32_t height, uint32_t rowPitch
   if (height > std::numeric_limits<uint64_t>::max() / rowPitch || height > std::numeric_limits<uint64_t>::max() / rowBytes) {
     return Status::Error("draw image is too large");
   }
-  const uint64_t requiredReadbackBytes = static_cast<uint64_t>(height) * rowPitch;
+  const uint64_t requiredReadbackBytes = static_cast<uint64_t>(height - 1) * rowPitch + rowBytes;
   const uint64_t pixelBytes = static_cast<uint64_t>(height) * rowBytes;
   if (readbackBytes < requiredReadbackBytes) {
     return Status::Error("invalid draw readback layout");
@@ -62,7 +62,7 @@ Status ValidateReadbackLayout(uint32_t width, uint32_t height, uint32_t rowPitch
   return Status::Ok();
 }
 
-}  // namespace
+}
 
 OwnedD3D12Runtime::~OwnedD3D12Runtime() {
   renderer_.Shutdown();
@@ -479,4 +479,4 @@ StatusOr<ImageRgba8> OwnedD3D12Runtime::Draw(const GaussianSplats& splats, const
   return ReadbackImage();
 }
 
-}  // namespace directxsplat
+}

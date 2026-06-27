@@ -29,6 +29,7 @@ endif()
 directxsplat_bool_option(DXSPLAT_BUILD_TESTS DIRECTXSPLAT_BUILD_TESTS "Build tests" ${DIRECTXSPLAT_DEFAULT_BUILD_TESTS})
 directxsplat_bool_option(DXSPLAT_BUILD_VIEWER DIRECTXSPLAT_BUILD_VIEWER "Build DirectXSplat viewer" ${DIRECTXSPLAT_DEFAULT_BUILD_VIEWER})
 option(DXSPLAT_BUILD_EXAMPLES "Build facade examples" OFF)
+option(DXSPLAT_BUILD_BENCHES "Build benchmark harnesses" OFF)
 directxsplat_bool_option(DXSPLAT_ENABLE_GPU_TESTS DIRECTXSPLAT_ENABLE_GPU_TESTS "Build D3D12/WARP renderer tests" ON)
 directxsplat_bool_option(DXSPLAT_ENABLE_WARNINGS DIRECTXSPLAT_ENABLE_WARNINGS "Enable project compiler warnings" ON)
 directxsplat_bool_option(DXSPLAT_WARNINGS_AS_ERRORS DIRECTXSPLAT_WARNINGS_AS_ERRORS "Treat project compiler warnings as errors" OFF)
@@ -98,6 +99,10 @@ add_subdirectory(directxsplat)
 
 if(DXSPLAT_BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+if(DXSPLAT_BUILD_BENCHES)
+  add_subdirectory(benches)
 endif()
 
 if(DXSPLAT_BUILD_TESTS)
