@@ -692,7 +692,85 @@ TEST_CASE("Renderer handles empty scenes and chunk operations") {
   CHECK_FALSE(harness.renderer().SetUploadedChunkScalingModifier(sceneHandle, UploadedChunkHandle{chunkHandle.value + 1000u}, 1.0f).ok);
   REQUIRE(harness.renderer().RemoveUploadedChunk(sceneHandle, chunkHandle).ok);
   CHECK_FALSE(harness.renderer().IsUploadedChunkValid(sceneHandle, chunkHandle));
+  CHECK_FALSE(harness.renderer().GetUploadedChunkInfo(sceneHandle, chunkHandle, chunkInfo).ok);
+  REQUIRE(harness.renderer().GetUploadedSceneChunks(sceneHandle, chunkHandles).ok);
+  CHECK(chunkHandles.empty());
+  REQUIRE(harness.renderer().GetUploadedSceneInfo(sceneHandle, sceneInfo).ok);
+  CHECK(sceneInfo.chunkCount == 0u);
+  CHECK(sceneInfo.gaussianCount == 0u);
   REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+}
+
+TEST_CASE("Renderer mutation tokens expire after EndSceneMutation") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  REQUIRE_MESSAGE(init.ok, init.message);
+
+  UploadedSceneHandle sceneHandle{};
+  std::vector<UploadedChunkHandle> chunks;
+  Scene scene = MakeTinyScene();
+  REQUIRE(harness.renderer().CreateUploadedScene(scene, sceneHandle, &chunks).ok);
+  REQUIRE(chunks.size() == 1u);
+
+  SceneMutationToken token{};
+  REQUIRE(harness.renderer().BeginSceneMutation(sceneHandle, token).ok);
+  REQUIRE(harness.renderer().EndSceneMutation(token).ok);
+
+  UploadedChunkHandle added{};
+  CHECK_FALSE(harness.renderer().AddUploadedChunk(token, scene.splatSets.front(), added).ok);
+  CHECK_FALSE(added.IsValid());
+  CHECK_FALSE(harness.renderer().UpdateUploadedScene(token, scene).ok);
+  CHECK_FALSE(harness.renderer().UpdateUploadedChunk(token, chunks.front(), scene.splatSets.front()).ok);
+  CHECK_FALSE(harness.renderer().RemoveUploadedChunk(token, chunks.front()).ok);
+  CHECK_FALSE(harness.renderer().SetUploadedChunkEnabled(token, chunks.front(), false).ok);
+  CHECK_FALSE(harness.renderer().SetUploadedChunkScalingModifier(token, chunks.front(), 0.5f).ok);
+  CHECK_FALSE(harness.renderer().DestroyUploadedScene(token).ok);
+
+  UploadedSceneInfo sceneInfo{};
+  REQUIRE(harness.renderer().GetUploadedSceneInfo(sceneHandle, sceneInfo).ok);
+  CHECK(sceneInfo.chunkCount == 1u);
+  CHECK(sceneInfo.gaussianCount == 2u);
+
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
+}
+
+TEST_CASE("Renderer chunk handles are scoped to their uploaded scene") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  REQUIRE_MESSAGE(init.ok, init.message);
+
+  Scene sceneA = MakeTinyScene();
+  Scene sceneB = MakeSceneWithColor(0.3f, 0.1f, 0.4f, 1.0f);
+  UploadedSceneHandle sceneAHandle{};
+  UploadedSceneHandle sceneBHandle{};
+  std::vector<UploadedChunkHandle> chunksA;
+  std::vector<UploadedChunkHandle> chunksB;
+  REQUIRE(harness.renderer().CreateUploadedScene(sceneA, sceneAHandle, &chunksA).ok);
+  REQUIRE(harness.renderer().CreateUploadedScene(sceneB, sceneBHandle, &chunksB).ok);
+  REQUIRE(chunksA.size() == 1u);
+  REQUIRE(chunksB.size() == 1u);
+
+  CHECK(harness.renderer().IsUploadedChunkValid(sceneAHandle, chunksA.front()));
+  CHECK(harness.renderer().IsUploadedChunkValid(sceneBHandle, chunksB.front()));
+  CHECK_FALSE(harness.renderer().IsUploadedChunkValid(sceneBHandle, chunksA.front()));
+
+  UploadedChunkInfo chunkInfo{};
+  CHECK_FALSE(harness.renderer().GetUploadedChunkInfo(sceneBHandle, chunksA.front(), chunkInfo).ok);
+  CHECK_FALSE(harness.renderer().UpdateUploadedChunk(sceneBHandle, chunksA.front(), sceneB.splatSets.front()).ok);
+  CHECK_FALSE(harness.renderer().RemoveUploadedChunk(sceneBHandle, chunksA.front()).ok);
+  CHECK_FALSE(harness.renderer().SetUploadedChunkEnabled(sceneBHandle, chunksA.front(), false).ok);
+  CHECK_FALSE(harness.renderer().SetUploadedChunkScalingModifier(sceneBHandle, chunksA.front(), 0.5f).ok);
+
+  UploadedSceneInfo sceneInfo{};
+  REQUIRE(harness.renderer().GetUploadedSceneInfo(sceneAHandle, sceneInfo).ok);
+  CHECK(sceneInfo.chunkCount == 1u);
+  CHECK(sceneInfo.gaussianCount == 2u);
+  REQUIRE(harness.renderer().GetUploadedSceneInfo(sceneBHandle, sceneInfo).ok);
+  CHECK(sceneInfo.chunkCount == 1u);
+  CHECK(sceneInfo.gaussianCount == 2u);
+
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneAHandle).ok);
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneBHandle).ok);
 }
 
 TEST_CASE("Renderer rejects stale and invalid frame contexts") {
@@ -843,6 +921,7 @@ TEST_CASE("Renderer GPU resource snapshot does not publish a direct fence lease"
   RenderFrameContext stale = frameContext;
   stale.completedFenceValue = stale.submissionFenceValue;
   CHECK_FALSE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, stale, resources).ok);
+  CHECK_FALSE(harness.renderer().AcquireUploadedSceneGpuResources(sceneHandle, stale, resources).ok);
 
   resources = {};
   REQUIRE(harness.renderer().GetUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
@@ -876,9 +955,21 @@ TEST_CASE("Renderer GPU resource lease holds destruction until the caller fence 
 
   UploadedSceneGpuResources resources{};
   REQUIRE(harness.renderer().AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources).ok);
+  CHECK(resources.scene == sceneHandle);
   CHECK(resources.leaseFence == frameContext.fence);
   CHECK(resources.leaseFenceValue == frameContext.submissionFenceValue);
   CHECK(resources.submission.submissionRequired);
+  CHECK(resources.sceneGaussians.IsValid());
+  CHECK(resources.sceneGaussians.lifetime == GpuViewLifetime::UploadedSceneLifetime);
+  CHECK(resources.sceneGaussians.access == GpuResourceAccess::ReadOnly);
+  CHECK_FALSE(resources.sceneGaussians.callerMayTransition);
+  CHECK_FALSE(resources.sceneGaussians.callerMayWrite);
+  REQUIRE(resources.chunks.size() == 1u);
+  CHECK(resources.chunks.front().gaussianData.IsValid());
+  CHECK(resources.chunks.front().gaussianData.lifetime == GpuViewLifetime::UploadedSceneLifetime);
+  CHECK(resources.chunks.front().gaussianData.access == GpuResourceAccess::ReadOnly);
+  CHECK_FALSE(resources.chunks.front().gaussianData.callerMayTransition);
+  CHECK_FALSE(resources.chunks.front().gaussianData.callerMayWrite);
   auto destroyFuture = std::async(std::launch::async, [&]() {
     return harness.renderer().DestroyUploadedScene(sceneHandle);
   });

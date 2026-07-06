@@ -40,7 +40,19 @@ int main() {
   directxsplat::RenderInput input{};
   directxsplat::RenderTargetBinding target{};
   directxsplat::RenderFrameContext frameContext{};
+  directxsplat::RenderSubmissionInfo submission{};
+  directxsplat::GpuBufferView buffer{};
+  directxsplat::GpuTextureView texture{};
+  directxsplat::GpuFrameResources frameResources{};
   directxsplat::UploadedSceneHandle uploadedScene{};
+  directxsplat::UploadedChunkHandle uploadedChunk{};
+  directxsplat::SceneMutationToken mutation{};
+  directxsplat::SceneAccessInfo accessInfo{};
+  directxsplat::UploadedSceneInfo sceneInfo{};
+  directxsplat::UploadedChunkInfo chunkInfo{};
+  directxsplat::UploadedSceneGpuResources sceneResources{};
+  directxsplat::UploadedChunkGpuResources chunkResources{};
+  directxsplat::UploadSyncPoint uploadSync{};
   directxsplat::DrawOptions draw{};
   directxsplat::ViewerConfig viewer{};
   viewer.width = 640;
@@ -53,7 +65,19 @@ int main() {
                  input.viewportWidth == 1 &&
                  target.colorTarget == nullptr &&
                  !frameContext.HasFence() &&
+                 !submission.submissionRequired &&
+                 !buffer.IsValid() &&
+                 !texture.IsValid() &&
+                 !frameResources.colorValid &&
                  !uploadedScene.IsValid() &&
+                 !uploadedChunk.IsValid() &&
+                 !mutation.IsValid() &&
+                 !accessInfo.readyToRender &&
+                 !sceneInfo.readyToRender &&
+                 !chunkInfo.resident &&
+                 sceneResources.chunks.empty() &&
+                 chunkResources.format == directxsplat::UploadedSceneBufferFormat::Unknown &&
+                 !uploadSync.IsValid() &&
                  draw.width == 1600 &&
                  viewer.width == 640
              ? 0
