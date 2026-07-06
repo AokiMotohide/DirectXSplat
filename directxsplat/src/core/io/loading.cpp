@@ -25,6 +25,10 @@ constexpr size_t kMaxPendingSceneLoads = 256;
 SceneFormat DetectSceneFormat(const std::string& path) { return io::DetectSceneFormat(path); }
 
 StatusOr<Scene> LoadSceneFromFile(const std::string& path, const SceneLoadOptions& options) {
+  if (path.empty()) {
+    return StatusOr<Scene>::Error("scene path is empty");
+  }
+
   io::SceneLoader loader;
   auto result = loader.Load(path, options);
   if (!result.ok()) {

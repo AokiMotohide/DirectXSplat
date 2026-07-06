@@ -92,6 +92,12 @@ TEST_CASE("Scene IO loads tiny ASCII PLY") {
   }
 }
 
+TEST_CASE("Scene IO rejects empty path") {
+  const auto loaded = LoadSceneFromFile("");
+  CHECK_FALSE(loaded.ok());
+  CHECK(loaded.status.message == "scene path is empty");
+}
+
 TEST_CASE("Scene IO malformed PLY fails cleanly") {
   const auto loaded = LoadSceneFromFile(AssetPath("tiny_bad.ply").string());
   CHECK_FALSE(loaded.ok());
@@ -115,6 +121,35 @@ TEST_CASE("Scene IO unsupported extension fails cleanly") {
   CHECK_FALSE(loaded.status.message.empty());
   std::error_code ec;
   std::filesystem::remove(tempPath, ec);
+}
+
+TEST_CASE("Scene IO applies source image directory load option") {
+  const std::filesystem::path dir = MakeTempDir("directxsplat_scene_source_image_dir");
+  const std::filesystem::path scenePath = dir / "scene.ply";
+  const std::filesystem::path imageDir = dir / "images";
+  std::filesystem::create_directories(imageDir);
+  WriteFile(scenePath, TinyPlyText(0.0f));
+  WriteFile(dir / "cameras.json",
+            "[{"
+            "\"name\":\"direct camera\","
+            "\"position\":[1,2,3],"
+            "\"rotation\":[0,0,0,1],"
+            "\"fovY\":1.0471975512,"
+            "\"image\":\"frame.png\""
+            "}]");
+
+  SceneLoadOptions options{};
+  options.sourceImageDirectory = imageDir.string();
+  const auto loaded = LoadSceneFromFile(scenePath.string(), options);
+
+  REQUIRE(loaded.ok());
+  REQUIRE(loaded.value.inputCameras.size() == 1u);
+  const std::filesystem::path sourceImage(loaded.value.inputCameras.front().sourceImage);
+  CHECK(sourceImage.filename() == "frame.png");
+  CHECK(sourceImage.parent_path().filename() == "images");
+
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("Scene IO rejects malformed and hostile PLY inputs") {

@@ -18,9 +18,9 @@
 #include <vector>
 
 #include "api/CameraSetInternal.h"
-#include "api/GaussianSplatsInternal.h"
 #include "directxsplat/directxsplat.h"
 #include "directxsplat/gpu_resources.h"
+#include "directxsplat/io.h"
 #include "directxsplat/renderer.h"
 #include "directxsplat/settings.h"
 
@@ -1266,6 +1266,14 @@ directxsplat::Status ValidateCameraSet(const directxsplat::CameraSet& cameras) {
   return directxsplat::Status::Ok();
 }
 
+uint64_t CountSceneSplats(const directxsplat::Scene& scene) {
+  uint64_t count = 0;
+  for (const directxsplat::GaussianSet& set : scene.splatSets) {
+    count += static_cast<uint64_t>(set.gaussians.size());
+  }
+  return count;
+}
+
 bool WantsHot(BenchMode mode) {
   return mode == BenchMode::HotRender || mode == BenchMode::Both;
 }
@@ -1301,9 +1309,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  auto splats = directxsplat::LoadFromFile(options.scenePath);
-  if (!splats.ok()) {
-    std::cerr << splats.status.message << "\n";
+  auto scene = directxsplat::LoadSceneFromFile(options.scenePath.string());
+  if (!scene.ok()) {
+    std::cerr << scene.status.message << "\n";
     return 1;
   }
 
@@ -1330,14 +1338,14 @@ int main(int argc, char** argv) {
   }
 
   directxsplat::UploadedSceneHandle sceneHandle{};
-  directxsplat::Status uploadStatus = runtime.Renderer().CreateUploadedScene(directxsplat::SceneFromSplats(splats.value), sceneHandle);
+  directxsplat::Status uploadStatus = runtime.Renderer().CreateUploadedScene(scene.value, sceneHandle);
   if (!uploadStatus.ok) {
     std::cerr << uploadStatus.message << "\n";
     return 1;
   }
 
   BenchSummary summary{};
-  summary.splats = splats.value.Size();
+  summary.splats = CountSceneSplats(scene.value);
   summary.width = cameras.value.cameras.front().width;
   summary.height = cameras.value.cameras.front().height;
   summary.cameraCount = static_cast<uint32_t>(cameras.value.cameras.size());

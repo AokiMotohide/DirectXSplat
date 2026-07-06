@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include <array>
+#include <bit>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -22,6 +24,60 @@ void WriteFile(const std::filesystem::path& path, const std::string& data) {
   file << data;
 }
 
+std::filesystem::path WriteTinyPly(const std::filesystem::path& dir) {
+  const std::filesystem::path path = dir / "scene.ply";
+  WriteFile(path,
+            "ply\n"
+            "format ascii 1.0\n"
+            "element vertex 1\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "property float scale_0\n"
+            "property float scale_1\n"
+            "property float scale_2\n"
+            "property float rot_0\n"
+            "property float rot_1\n"
+            "property float rot_2\n"
+            "property float rot_3\n"
+            "property float opacity\n"
+            "property float f_dc_0\n"
+            "property float f_dc_1\n"
+            "property float f_dc_2\n"
+            "end_header\n"
+            "0 0 2 0.1 0.1 0.1 1 0 0 0 1 0 0 0\n");
+  return path;
+}
+
+std::filesystem::path WriteSplatRecord(const std::filesystem::path& dir) {
+  const std::filesystem::path path = dir / "scene.splat";
+  std::string bytes;
+  bytes.resize(32u, '\0');
+  auto putFloat = [&](size_t offset, float value) {
+    const uint32_t bits = std::bit_cast<uint32_t>(value);
+    bytes[offset + 0u] = static_cast<char>(bits & 0xFFu);
+    bytes[offset + 1u] = static_cast<char>((bits >> 8u) & 0xFFu);
+    bytes[offset + 2u] = static_cast<char>((bits >> 16u) & 0xFFu);
+    bytes[offset + 3u] = static_cast<char>((bits >> 24u) & 0xFFu);
+  };
+  putFloat(0u, 1.0f);
+  putFloat(4u, 2.0f);
+  putFloat(8u, 3.0f);
+  putFloat(12u, 0.5f);
+  putFloat(16u, 0.75f);
+  putFloat(20u, 1.25f);
+  bytes[24] = static_cast<char>(255);
+  bytes[25] = static_cast<char>(64);
+  bytes[26] = static_cast<char>(0);
+  bytes[27] = static_cast<char>(200);
+  bytes[28] = static_cast<char>(255);
+  bytes[29] = static_cast<char>(128);
+  bytes[30] = static_cast<char>(128);
+  bytes[31] = static_cast<char>(128);
+  WriteFile(path, bytes);
+  return path;
+}
+
 }  // namespace
 
 TEST_CASE("LoadFromPly rejects empty path") {
@@ -36,6 +92,34 @@ TEST_CASE("LoadFromPly rejects .txt path") {
 
   CHECK_FALSE(loaded.ok());
   CHECK(loaded.status.message.find("expected .ply") != std::string::npos);
+}
+
+TEST_CASE("LoadFromPly loads tiny PLY") {
+  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_load_ply");
+
+  const auto loaded = directxsplat::LoadFromPly(WriteTinyPly(dir));
+
+  REQUIRE(loaded.ok());
+  CHECK_FALSE(loaded.value.Empty());
+  CHECK(loaded.value.Size() == 1u);
+
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
+}
+
+TEST_CASE("LoadFromFile routes by scene format") {
+  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_load_by_format");
+
+  const auto ply = directxsplat::LoadFromFile(WriteTinyPly(dir));
+  const auto splat = directxsplat::LoadFromFile(WriteSplatRecord(dir));
+
+  REQUIRE(ply.ok());
+  REQUIRE(splat.ok());
+  CHECK(ply.value.Size() == 1u);
+  CHECK(splat.value.Size() == 1u);
+
+  std::error_code ec;
+  std::filesystem::remove_all(dir, ec);
 }
 
 TEST_CASE("LoadCameraSet reads camera json") {
