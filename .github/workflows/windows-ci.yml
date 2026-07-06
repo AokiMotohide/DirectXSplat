@@ -63,7 +63,8 @@ jobs:
             "DirectXSplatPlatformTests",
             "DirectXSplatViewerTests",
             "DirectXSplatRuntimeTests",
-            "DirectXSplatRepositoryLayout"
+            "DirectXSplatRepositoryLayout",
+            "DirectXSplatInstallConsumerSmoke"
           )
           $json = ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} --show-only=json-v1 | ConvertFrom-Json
           $actual = @($json.tests | ForEach-Object { $_.name })

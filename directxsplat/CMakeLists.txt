@@ -112,7 +112,6 @@ target_include_directories(directxsplat
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/internal_headers
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
@@ -231,6 +230,9 @@ if(DXSPLAT_BUILD_VIEWER)
 endif()
 
 set(directxsplat_install_cmakedir ${CMAKE_INSTALL_LIBDIR}/cmake/DirectXSplat)
+file(GLOB DIRECTXSPLAT_PUBLIC_HEADERS CONFIGURE_DEPENDS
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/directxsplat/*.h
+)
 
 install(TARGETS directxsplat
   EXPORT DirectXSplatTargets
@@ -239,8 +241,7 @@ install(TARGETS directxsplat
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/directxsplat/directxsplat.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/directxsplat/status.h
+  ${DIRECTXSPLAT_PUBLIC_HEADERS}
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/directxsplat
 )
 

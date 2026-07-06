@@ -2,6 +2,7 @@ add_executable(DirectXSplatRuntimeTests
   DrawFacadeTests.cpp
   ExampleSourcePolicyTests.cpp
   FacadeLoaderTests.cpp
+  PublicAdvancedTypesTests.cpp
   PublicFacadeTypesTests.cpp
   RuntimeFacadeTests.cpp
   ViewerFacadeContractTests.cpp
@@ -31,3 +32,14 @@ add_test(
     -P ${PROJECT_SOURCE_DIR}/tests/RepositoryLayout.cmake
 )
 set_tests_properties(DirectXSplatRepositoryLayout PROPERTIES LABELS "repository;layout")
+
+add_test(
+  NAME DirectXSplatInstallConsumerSmoke
+  COMMAND ${CMAKE_COMMAND}
+    "-DDIRECTXSPLAT_BUILD_DIR=${PROJECT_BINARY_DIR}"
+    "-DDIRECTXSPLAT_CONFIG=$<CONFIG>"
+    "-DDIRECTXSPLAT_GENERATOR=${CMAKE_GENERATOR}"
+    "-DDIRECTXSPLAT_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+    -P ${PROJECT_SOURCE_DIR}/tests/InstallConsumerSmoke.cmake
+)
+set_tests_properties(DirectXSplatInstallConsumerSmoke PROPERTIES LABELS "install;export;runtime")

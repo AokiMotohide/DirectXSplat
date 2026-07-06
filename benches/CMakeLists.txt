@@ -9,7 +9,6 @@ target_include_directories(DirectXSplatBench
     ${PROJECT_SOURCE_DIR}/directxsplat/src
     ${PROJECT_SOURCE_DIR}/directxsplat/src/api
     ${PROJECT_SOURCE_DIR}/directxsplat/src/core
-    ${PROJECT_SOURCE_DIR}/directxsplat/src/core/internal_headers
 )
 
 target_link_libraries(DirectXSplatBench PRIVATE DirectXSplat::DirectXSplat)

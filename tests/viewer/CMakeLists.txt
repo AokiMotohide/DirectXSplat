@@ -14,7 +14,6 @@ target_include_directories(DirectXSplatViewerTests
   PRIVATE
     ${PROJECT_SOURCE_DIR}/directxsplat/src/app
     ${PROJECT_SOURCE_DIR}/directxsplat/src
-    ${PROJECT_SOURCE_DIR}/directxsplat/src/core/internal_headers
 )
 target_link_libraries(DirectXSplatViewerTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
 target_compile_features(DirectXSplatViewerTests PRIVATE cxx_std_20)

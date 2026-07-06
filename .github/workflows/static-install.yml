@@ -56,12 +56,35 @@ jobs:
           target_link_libraries(consumer PRIVATE DirectXSplat::DirectXSplat)
           '@ | Set-Content -Path (Join-Path $consumer "CMakeLists.txt") -NoNewline
           @'
+          #include <directxsplat/context.h>
           #include <directxsplat/directxsplat.h>
+          #include <directxsplat/gpu_resources.h>
+          #include <directxsplat/io.h>
+          #include <directxsplat/renderer.h>
+
           int main() {
-            directxsplat::ViewerConfig config{};
-            config.width = 640;
-            config.height = 480;
-            return config.width == 640 && config.height == 480 ? 0 : 1;
+            directxsplat::D3D12Context context{};
+            directxsplat::Renderer renderer{};
+            directxsplat::RendererConfig rendererConfig{};
+            directxsplat::Scene scene{};
+            directxsplat::RenderInput input{};
+            directxsplat::RenderTargetBinding target{};
+            directxsplat::RenderFrameContext frameContext{};
+            directxsplat::UploadedSceneHandle uploadedScene{};
+            directxsplat::DrawOptions draw{};
+            directxsplat::ViewerConfig viewer{};
+            viewer.width = 640;
+            viewer.height = 480;
+            return context.Device() == nullptr &&
+                   !renderer.IsDeviceLost() &&
+                   rendererConfig.maxUploadsPerFrame > 0 &&
+                   scene.splatSets.empty() &&
+                   input.viewportWidth == 1 &&
+                   target.colorTarget == nullptr &&
+                   !frameContext.HasFence() &&
+                   !uploadedScene.IsValid() &&
+                   draw.width == 1600 &&
+                   viewer.width == 640 ? 0 : 1;
           }
           '@ | Set-Content -Path (Join-Path $consumer "main.cpp") -NoNewline
           cmake -S $consumer -B "$env:RUNNER_TEMP/directxsplat-consumer-build" -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:RUNNER_TEMP/directxsplat-install"
@@ -85,7 +108,7 @@ jobs:
           if (-not (Test-Path "tests/CMakeLists.txt" -PathType Leaf)) {
             throw "Root tests/CMakeLists.txt is missing"
           }
-          $requiredDirs = @("directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/core/internal_headers", "directxsplat/src/platform", "directxsplat/src/shaders", "examples", "examples/basic_viewer", "examples/camera_viewer", "examples/basic_draw", "tests/core", "tests/platform", "tests/runtime", "tests/viewer")
+          $requiredDirs = @("directxsplat", "directxsplat/include/directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/platform", "directxsplat/src/shaders", "examples", "examples/basic_viewer", "examples/camera_viewer", "examples/basic_draw", "tests/core", "tests/platform", "tests/runtime", "tests/viewer")
           $missingDirs = $requiredDirs | Where-Object { -not (Test-Path $_ -PathType Container) }
           if ($missingDirs.Count -ne 0) {
             throw "Required repository folders are missing: $($missingDirs -join ', ')"
@@ -133,8 +156,22 @@ jobs:
         run: |
           $prefix = "$env:RUNNER_TEMP/directxsplat-package"
           $required = @(
+            "include/directxsplat/bounding.h",
+            "include/directxsplat/context.h",
             "include/directxsplat/directxsplat.h",
+            "include/directxsplat/extensions.h",
+            "include/directxsplat/gpu_resources.h",
+            "include/directxsplat/io.h",
+            "include/directxsplat/math.h",
+            "include/directxsplat/render_hooks.h",
+            "include/directxsplat/renderer.h",
+            "include/directxsplat/scene.h",
+            "include/directxsplat/settings.h",
+            "include/directxsplat/sort.h",
             "include/directxsplat/status.h",
+            "include/directxsplat/types.h",
+            "include/directxsplat/upscaling.h",
+            "include/directxsplat/vram_format.h",
             "lib/cmake/DirectXSplat/DirectXSplatConfig.cmake",
             "lib/cmake/DirectXSplat/DirectXSplatConfigVersion.cmake",
             "lib/cmake/DirectXSplat/DirectXSplatTargets.cmake"
@@ -148,33 +185,29 @@ jobs:
             throw "Installed package did not contain DirectXSplat.lib"
           }
           $requiredHeaders = @(
-            "include/directxsplat/directxsplat.h",
-            "include/directxsplat/status.h"
-          )
-          $forbiddenHeaders = @(
-            "include/directxsplat/renderer.h",
+            "include/directxsplat/bounding.h",
             "include/directxsplat/context.h",
+            "include/directxsplat/directxsplat.h",
+            "include/directxsplat/extensions.h",
             "include/directxsplat/gpu_resources.h",
-            "include/directxsplat/io.h"
+            "include/directxsplat/io.h",
+            "include/directxsplat/math.h",
+            "include/directxsplat/render_hooks.h",
+            "include/directxsplat/renderer.h",
+            "include/directxsplat/scene.h",
+            "include/directxsplat/settings.h",
+            "include/directxsplat/sort.h",
+            "include/directxsplat/status.h",
+            "include/directxsplat/types.h",
+            "include/directxsplat/upscaling.h",
+            "include/directxsplat/vram_format.h"
           )
           $missingHeaders = $requiredHeaders | Where-Object { -not (Test-Path (Join-Path $prefix $_) -PathType Leaf) }
           if ($missingHeaders.Count -ne 0) {
             throw "Installed package is missing public headers: $($missingHeaders -join ', ')"
           }
-          $presentForbiddenHeaders = $forbiddenHeaders | Where-Object { Test-Path (Join-Path $prefix $_) -PathType Leaf }
-          if ($presentForbiddenHeaders.Count -ne 0) {
-            throw "Installed package contains removed SDK headers: $($presentForbiddenHeaders -join ', ')"
-          }
           $installedHeaders = Get-ChildItem -Path (Join-Path $prefix "include/directxsplat") -Filter "*.h" -File | ForEach-Object { "include/directxsplat/$($_.Name)" }
           $extraHeaders = $installedHeaders | Where-Object { $_ -notin $requiredHeaders }
           if ($extraHeaders.Count -ne 0) {
             throw "Installed package contains unexpected public headers: $($extraHeaders -join ', ')"
-          }
-          $forbiddenText = @("ID3D12", "RenderTargetBinding", "Renderer")
-          foreach ($header in $installedHeaders) {
-            $path = Join-Path $prefix $header
-            $matches = Select-String -Path $path -Pattern $forbiddenText -SimpleMatch
-            if ($matches.Count -ne 0) {
-              throw "Installed public header contains removed SDK text: $header"
-            }
           }
