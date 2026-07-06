@@ -1,3 +1,4 @@
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
 #include <Windows.h>
@@ -200,6 +201,41 @@ class RenderHarness {
     return Status::Ok();
   }
 
+  Status CreateCommandList(ComPtr<ID3D12CommandAllocator>& allocator, ComPtr<ID3D12GraphicsCommandList>& commandList) {
+    HRESULT hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(allocator.ReleaseAndGetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating command allocator");
+    }
+    hr = device_->CreateCommandList(0,
+                                    D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                    allocator.Get(),
+                                    nullptr,
+                                    IID_PPV_ARGS(commandList.ReleaseAndGetAddressOf()));
+    if (FAILED(hr)) {
+      return Status::Error("failed creating command list");
+    }
+    return Status::Ok();
+  }
+
+  Status ExecuteCommandList(ID3D12GraphicsCommandList* commandList, UploadSyncPoint sync, uint64_t signalValue) {
+    Status syncStatus = QueueUploadSync(sync);
+    if (!syncStatus.ok) {
+      return syncStatus;
+    }
+    HRESULT hr = commandList->Close();
+    if (FAILED(hr)) {
+      return Status::Error("failed closing command list");
+    }
+    ID3D12CommandList* lists[] = {commandList};
+    queue_->ExecuteCommandLists(1, lists);
+    hr = queue_->Signal(fence_.Get(), signalValue);
+    if (FAILED(hr)) {
+      return Status::Error("failed signaling fence");
+    }
+    fenceValue_ = std::max(fenceValue_, signalValue);
+    return Status::Ok();
+  }
+
   Status SignalFenceOnly() {
     const uint64_t targetFence = ++fenceValue_;
     HRESULT hr = queue_->Signal(fence_.Get(), targetFence);
@@ -213,6 +249,18 @@ class RenderHarness {
       }
       WaitForSingleObject(fenceEvent_, INFINITE);
     }
+    return Status::Ok();
+  }
+
+  Status WaitForSubmittedWork() {
+    if (fence_->GetCompletedValue() >= fenceValue_) {
+      return Status::Ok();
+    }
+    HRESULT hr = fence_->SetEventOnCompletion(fenceValue_, fenceEvent_);
+    if (FAILED(hr)) {
+      return Status::Error("failed waiting for fence");
+    }
+    WaitForSingleObject(fenceEvent_, INFINITE);
     return Status::Ok();
   }
 
@@ -328,7 +376,7 @@ class RenderHarness {
     return Status::Ok();
   }
 
-  void QueueColorReadback(const OffscreenFrame& frame) {
+  void QueueColorReadback(ID3D12GraphicsCommandList* commandList, const OffscreenFrame& frame) {
     D3D12_TEXTURE_COPY_LOCATION src{};
     src.pResource = frame.colorTexture.Get();
     src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -339,7 +387,11 @@ class RenderHarness {
     dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
     dst.PlacedFootprint = frame.footprint;
 
-    commandList_->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+  }
+
+  void QueueColorReadback(const OffscreenFrame& frame) {
+    QueueColorReadback(commandList_.Get(), frame);
   }
 
   std::vector<uint8_t> ReadbackColor(const OffscreenFrame& frame) const {
@@ -643,7 +695,7 @@ TEST_CASE("Renderer handles empty scenes and chunk operations") {
   REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
 }
 
-TEST_CASE("Renderer rejects stale frame contexts") {
+TEST_CASE("Renderer rejects stale and invalid frame contexts") {
   RenderHarness harness;
   const Status init = harness.Initialize();
   REQUIRE_MESSAGE(init.ok, init.message);
@@ -654,13 +706,80 @@ TEST_CASE("Renderer rejects stale frame contexts") {
   OffscreenFrame frame{};
   REQUIRE(harness.CreateOffscreenFrame(64, 64, frame).ok);
 
+  auto expectRejected = [&](const RenderFrameContext& frameContext) {
+    RenderPreparationResult preparation{};
+    CHECK_FALSE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+    RenderResult renderResult{};
+    CHECK_FALSE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, frameContext, renderResult).ok);
+  };
+
+  RenderFrameContext missingFence = harness.FrameContext();
+  missingFence.fence = nullptr;
+  expectRejected(missingFence);
+
+  RenderFrameContext missingSubmission = harness.FrameContext();
+  missingSubmission.submissionFenceValue = 0;
+  expectRejected(missingSubmission);
+
+  ComPtr<ID3D12Fence> otherFence;
+  REQUIRE(SUCCEEDED(harness.device()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(otherFence.GetAddressOf()))));
+  RenderFrameContext wrongFence = harness.FrameContext();
+  wrongFence.fence = otherFence.Get();
+  expectRejected(wrongFence);
+
   RenderFrameContext stale = harness.FrameContext();
   REQUIRE(harness.SignalFenceOnly().ok);
   stale.completedFenceValue = stale.submissionFenceValue;
-  RenderPreparationResult preparation{};
-  CHECK_FALSE(harness.renderer().PrepareSceneForRender(sceneHandle, input, stale, &preparation).ok);
-  RenderResult renderResult{};
-  CHECK_FALSE(harness.renderer().Render(harness.commandList(), frame.binding, sceneHandle, input, stale, renderResult).ok);
+  expectRejected(stale);
+}
+
+TEST_CASE("Renderer renders one uploaded scene across queued frames") {
+  RenderHarness harness;
+  const Status init = harness.Initialize();
+  REQUIRE_MESSAGE(init.ok, init.message);
+
+  UploadedSceneHandle sceneHandle{};
+  REQUIRE(harness.renderer().CreateUploadedScene(MakeTinyScene(), sceneHandle).ok);
+
+  constexpr size_t kQueuedFrameCount = 3;
+  std::array<OffscreenFrame, kQueuedFrameCount> frames{};
+  std::array<ComPtr<ID3D12CommandAllocator>, kQueuedFrameCount> allocators{};
+  std::array<ComPtr<ID3D12GraphicsCommandList>, kQueuedFrameCount> commandLists{};
+
+  for (size_t i = 0; i < frames.size(); ++i) {
+    RenderFrameContext frameContext = harness.FrameContext();
+    frameContext.frameIndex = i;
+    RenderInput input = MakeRenderInput(64, 64);
+    input.frameIndex = frameContext.frameIndex;
+
+    RenderPreparationResult preparation{};
+    REQUIRE(harness.renderer().PrepareSceneForRender(sceneHandle, input, frameContext, &preparation).ok);
+    CHECK(preparation.stats.gaussiansTotal == 2u);
+
+    REQUIRE(harness.CreateOffscreenFrame(64, 64, frames[i]).ok);
+    REQUIRE(harness.CreateCommandList(allocators[i], commandLists[i]).ok);
+
+    RenderResult renderResult{};
+    REQUIRE(harness.renderer().Render(commandLists[i].Get(), frames[i].binding, sceneHandle, input, frameContext, renderResult).ok);
+    CHECK(renderResult.submission.submissionRequired);
+
+    harness.QueueColorReadback(commandLists[i].Get(), frames[i]);
+    REQUIRE(harness.ExecuteCommandList(commandLists[i].Get(),
+                                       renderResult.submission.uploadSyncPoint,
+                                       frameContext.submissionFenceValue)
+                .ok);
+  }
+
+  REQUIRE(harness.WaitForSubmittedWork().ok);
+  CHECK_MESSAGE(harness.DeviceRemovedReason() == S_OK, harness.DebugMessages());
+
+  for (const OffscreenFrame& frame : frames) {
+    const std::vector<uint8_t> pixels = harness.ReadbackColor(frame);
+    REQUIRE_FALSE(pixels.empty());
+    CHECK(CountNonZeroPixels(pixels) > 0u);
+  }
+
+  REQUIRE(harness.renderer().DestroyUploadedScene(sceneHandle).ok);
 }
 
 TEST_CASE("Renderer prepares negative view-space Z residency") {

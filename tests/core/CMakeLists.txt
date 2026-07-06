@@ -8,12 +8,6 @@ add_executable(DirectXSplatCoreTests
   SortTests.cpp
 )
 
-if(DXSPLAT_ENABLE_GPU_TESTS)
-  target_sources(DirectXSplatCoreTests PRIVATE RendererTests.cpp)
-else()
-  message(STATUS "D3D12/WARP renderer tests are disabled because DXSPLAT_ENABLE_GPU_TESTS=OFF")
-endif()
-
 target_link_libraries(DirectXSplatCoreTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
 target_include_directories(DirectXSplatCoreTests
   PRIVATE
@@ -31,4 +25,30 @@ directxsplat_add_test_executable(DirectXSplatCoreTests "core")
 
 if(COMMAND directxsplat_stage_dxc_runtime)
   directxsplat_stage_dxc_runtime(DirectXSplatCoreTests)
+endif()
+
+if(DXSPLAT_ENABLE_GPU_TESTS)
+  add_executable(DirectXSplatRendererTests
+    RendererTests.cpp
+  )
+
+  target_link_libraries(DirectXSplatRendererTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
+  target_include_directories(DirectXSplatRendererTests
+    PRIVATE
+      ${PROJECT_SOURCE_DIR}/directxsplat/src
+      ${PROJECT_SOURCE_DIR}/directxsplat/src/core
+  )
+  target_compile_features(DirectXSplatRendererTests PRIVATE cxx_std_20)
+
+  if(COMMAND directxsplat_apply_project_warnings)
+    directxsplat_apply_project_warnings(DirectXSplatRendererTests)
+  endif()
+
+  directxsplat_add_test_executable(DirectXSplatRendererTests "renderer;core")
+
+  if(COMMAND directxsplat_stage_dxc_runtime)
+    directxsplat_stage_dxc_runtime(DirectXSplatRendererTests)
+  endif()
+else()
+  message(STATUS "D3D12/WARP renderer tests are disabled because DXSPLAT_ENABLE_GPU_TESTS=OFF")
 endif()
