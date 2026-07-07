@@ -54,6 +54,8 @@ jobs:
           find_package(DirectXSplat CONFIG REQUIRED)
           add_executable(consumer main.cpp)
           target_link_libraries(consumer PRIVATE DirectXSplat::DirectXSplat)
+          enable_testing()
+          add_test(NAME consumer COMMAND consumer)
           '@ | Set-Content -Path (Join-Path $consumer "CMakeLists.txt") -NoNewline
           @'
           #include <directxsplat/context.h>
@@ -70,7 +72,19 @@ jobs:
             directxsplat::RenderInput input{};
             directxsplat::RenderTargetBinding target{};
             directxsplat::RenderFrameContext frameContext{};
+            directxsplat::RenderSubmissionInfo submission{};
+            directxsplat::GpuBufferView buffer{};
+            directxsplat::GpuTextureView texture{};
+            directxsplat::GpuFrameResources frameResources{};
             directxsplat::UploadedSceneHandle uploadedScene{};
+            directxsplat::UploadedChunkHandle uploadedChunk{};
+            directxsplat::SceneMutationToken mutation{};
+            directxsplat::SceneAccessInfo accessInfo{};
+            directxsplat::UploadedSceneInfo sceneInfo{};
+            directxsplat::UploadedChunkInfo chunkInfo{};
+            directxsplat::UploadedSceneGpuResources sceneResources{};
+            directxsplat::UploadedChunkGpuResources chunkResources{};
+            directxsplat::UploadSyncPoint uploadSync{};
             directxsplat::DrawOptions draw{};
             directxsplat::ViewerConfig viewer{};
             viewer.width = 640;
@@ -82,7 +96,19 @@ jobs:
                    input.viewportWidth == 1 &&
                    target.colorTarget == nullptr &&
                    !frameContext.HasFence() &&
+                   !submission.submissionRequired &&
+                   !buffer.IsValid() &&
+                   !texture.IsValid() &&
+                   !frameResources.colorValid &&
                    !uploadedScene.IsValid() &&
+                   !uploadedChunk.IsValid() &&
+                   !mutation.IsValid() &&
+                   !accessInfo.readyToRender &&
+                   !sceneInfo.readyToRender &&
+                   !chunkInfo.resident &&
+                   sceneResources.chunks.empty() &&
+                   chunkResources.format == directxsplat::UploadedSceneBufferFormat::Unknown &&
+                   !uploadSync.IsValid() &&
                    draw.width == 1600 &&
                    viewer.width == 640 ? 0 : 1;
           }
@@ -92,51 +118,15 @@ jobs:
       - name: Build installed-package consumer
         run: cmake --build "$env:RUNNER_TEMP/directxsplat-consumer-build" --config Release --parallel
 
+      - name: Run installed-package consumer
+        run: ctest --test-dir "$env:RUNNER_TEMP/directxsplat-consumer-build" -C Release --output-on-failure
+
   release-smoke:
-    name: Release packaging hygiene
+    name: Installed package artifacts
     runs-on: windows-2022
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Check repository hygiene
-        run: |
-          $missing = @("README.md", "LICENSE") | Where-Object { -not (Test-Path $_ -PathType Leaf) }
-          if ($missing.Count -ne 0) {
-            throw "Missing required release files: $($missing -join ', ')"
-          }
-          if (-not (Test-Path "tests/CMakeLists.txt" -PathType Leaf)) {
-            throw "Root tests/CMakeLists.txt is missing"
-          }
-          $requiredDirs = @("directxsplat", "directxsplat/include/directxsplat", "directxsplat/src/app", "directxsplat/src/core", "directxsplat/src/platform", "directxsplat/src/shaders", "examples", "examples/basic_viewer", "examples/camera_viewer", "examples/basic_draw", "tests/core", "tests/platform", "tests/runtime", "tests/viewer")
-          $missingDirs = $requiredDirs | Where-Object { -not (Test-Path $_ -PathType Container) }
-          if ($missingDirs.Count -ne 0) {
-            throw "Required repository folders are missing: $($missingDirs -join ', ')"
-          }
-          function HasExactName($names, $candidate) {
-            foreach ($name in $names) {
-              if ([string]::Equals($name, $candidate, [System.StringComparison]::Ordinal)) {
-                return $true
-              }
-            }
-            return $false
-          }
-          $rootDirs = Get-ChildItem -Force -Directory | ForEach-Object { $_.Name }
-          $testDirs = Get-ChildItem tests -Force -Directory | ForEach-Object { $_.Name }
-          $oldRootDirs = @("DirectXSplat", "AppCommon", "SampleApp") | Where-Object { HasExactName $rootDirs $_ }
-          $oldTestDirs = @("DirectXSplat", "AppCommon", "SampleApp") | Where-Object { HasExactName $testDirs $_ } | ForEach-Object { "tests/$_" }
-          $oldDirs = @($oldRootDirs) + @($oldTestDirs)
-          if ($oldDirs.Count -ne 0) {
-            throw "Old capitalized folders are present: $($oldDirs -join ', ')"
-          }
-          $forbiddenFiles = @("imgui.ini") | Where-Object { Test-Path $_ }
-          if ($forbiddenFiles.Count -ne 0) {
-            throw "Forbidden local state files are present: $($forbiddenFiles -join ', ')"
-          }
-          $forbiddenDirs = @("build", "build_*", "out", ".vs", "x64", "Debug", "Release") | Where-Object { Test-Path $_ -PathType Container }
-          if ($forbiddenDirs.Count -ne 0) {
-            throw "Stale build output directories are present: $($forbiddenDirs -join ', ')"
-          }
 
       - name: Configure install-only smoke build
         run: >

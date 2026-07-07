@@ -23,6 +23,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(DirectXSplat CONFIG REQUIRED)
 add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE DirectXSplat::DirectXSplat)
+enable_testing()
+add_test(NAME consumer COMMAND consumer)
 ]=])
 
 file(WRITE "${consumer_source}/main.cpp" [=[
@@ -118,4 +120,12 @@ execute_process(
 )
 if(NOT build_result EQUAL 0)
   message(FATAL_ERROR "Installed DirectXSplat consumer build failed")
+endif()
+
+execute_process(
+  COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${consumer_build}" -C "${DIRECTXSPLAT_CONFIG}" --output-on-failure
+  RESULT_VARIABLE test_result
+)
+if(NOT test_result EQUAL 0)
+  message(FATAL_ERROR "Installed DirectXSplat consumer run failed")
 endif()

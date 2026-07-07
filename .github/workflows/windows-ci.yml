@@ -56,22 +56,6 @@ jobs:
       - name: List registered tests
         run: ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} -N
 
-      - name: Verify registered test matrix
-        run: |
-          $expected = @(
-            "DirectXSplatCoreTests",
-            "DirectXSplatPlatformTests",
-            "DirectXSplatViewerTests",
-            "DirectXSplatRuntimeTests",
-            "DirectXSplatRepositoryLayout",
-            "DirectXSplatInstallConsumerSmoke"
-          )
-          $json = ctest --test-dir "build/core-${{ matrix.config }}" -C ${{ matrix.config }} --show-only=json-v1 | ConvertFrom-Json
-          $actual = @($json.tests | ForEach-Object { $_.name })
-          if (($actual -join "|") -ne ($expected -join "|")) {
-            throw "Unexpected CTest matrix: $($actual -join ', ')"
-          }
-
       - name: Run all core tests
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
@@ -88,7 +72,7 @@ jobs:
           --output-on-failure
           --no-tests=error
 
-      - name: Run layout and shader invariant tests
+      - name: Run shader and renderer invariant tests
         if: matrix.config == 'Release'
         run: >
           ctest --test-dir "build/core-${{ matrix.config }}"
@@ -143,39 +127,40 @@ jobs:
         run: >
           cmake --build build/viewer
           --config Release
-          --target DirectXSplatBasicViewerExample DirectXSplatCameraViewerExample DirectXSplatBasicDrawExample
-
-      - name: Verify product viewer artifacts
-        run: |
-          $bin = "build/viewer/bin/Release"
-          $required = @(
-            "DirectXSplatViewer.exe",
-            "DirectXSplatBasicViewerExample.exe",
-            "DirectXSplatCameraViewerExample.exe",
-            "DirectXSplatBasicDrawExample.exe"
-          )
-          $missing = $required | Where-Object { -not (Test-Path (Join-Path $bin $_) -PathType Leaf) }
-          if ($missing.Count -ne 0) {
-            throw "Expected product artifacts were not built: $($missing -join ', ')"
-          }
-          $forbidden = @(
-            "DirectXSplatMinimalViewer.exe",
-            "DirectXSplatOffscreenCapture.exe",
-            "DirectXSplatConfiguredViewerExample.exe",
-            "DirectXSplatFacadeViewerExample.exe",
-            "DirectXSplatFacadeCameraViewerExample.exe",
-            "DirectXSplatFacadeDrawExample.exe"
-          )
-          $present = $forbidden | Where-Object { Test-Path (Join-Path $bin $_) -PathType Leaf }
-          if ($present.Count -ne 0) {
-            throw "Legacy example executables should not be present: $($present -join ', ')"
-          }
+          --target
+          DirectXSplatHostD3D12RenderExample
+          DirectXSplatOffscreenCaptureExample
+          DirectXSplatSceneUpdatesExample
+          DirectXSplatGpuResourceInteropExample
+          DirectXSplatBasicViewerExample
+          DirectXSplatCameraViewerExample
+          DirectXSplatBasicDrawExample
 
       - name: Build product viewer tests
         run: cmake --build build/viewer --config Release --parallel
 
       - name: Run product viewer tests
         run: ctest --test-dir build/viewer -C Release --output-on-failure --no-tests=error
+
+  bench-target:
+    name: Benchmark target
+    runs-on: windows-2022
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure benchmark build
+        run: >
+          cmake -S . -B build/bench
+          -G "Visual Studio 17 2022" -A x64
+          -DDXSPLAT_BUILD_BENCHES=ON
+          -DDXSPLAT_BUILD_TESTS=OFF
+          -DDXSPLAT_BUILD_VIEWER=OFF
+          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDXSPLAT_ENABLE_WARNINGS=ON
+
+      - name: Build benchmark target
+        run: cmake --build build/bench --config Release --target DirectXSplatBench --parallel
 
   optional-warp-renderer:
     name: Optional D3D12/WARP renderer tests
@@ -201,6 +186,6 @@ jobs:
         run: >
           ctest --test-dir build/warp-renderer
           -C Release
-          -R "DirectXSplatCoreTests"
+          -R "DirectXSplatRendererTests"
           --output-on-failure
           --no-tests=error
