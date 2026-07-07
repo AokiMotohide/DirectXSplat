@@ -25,6 +25,11 @@ add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE DirectXSplat::DirectXSplat)
 enable_testing()
 add_test(NAME consumer COMMAND consumer)
+if(DEFINED DIRECTXSPLAT_RUNTIME_BIN)
+  set_tests_properties(consumer PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${DIRECTXSPLAT_RUNTIME_BIN}"
+  )
+endif()
 ]=])
 
 file(WRITE "${consumer_source}/main.cpp" [=[
@@ -101,6 +106,7 @@ set(configure_command
   -B "${consumer_build}"
   -G "${DIRECTXSPLAT_GENERATOR}"
   "-DCMAKE_PREFIX_PATH=${prefix}"
+  "-DDIRECTXSPLAT_RUNTIME_BIN=${prefix}/bin"
 )
 if(DEFINED DIRECTXSPLAT_GENERATOR_PLATFORM AND NOT DIRECTXSPLAT_GENERATOR_PLATFORM STREQUAL "")
   list(APPEND configure_command -A "${DIRECTXSPLAT_GENERATOR_PLATFORM}")
