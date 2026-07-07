@@ -1,3 +1,34 @@
+add_library(DirectXSplatExampleCommon STATIC
+  common/d3d12_example_common.cpp
+)
+target_include_directories(DirectXSplatExampleCommon PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/common)
+target_link_libraries(DirectXSplatExampleCommon PUBLIC DirectXSplat::DirectXSplat)
+target_compile_features(DirectXSplatExampleCommon PUBLIC cxx_std_20)
+
+add_executable(DirectXSplatHostD3D12RenderExample
+  host_d3d12_render/main.cpp
+)
+target_link_libraries(DirectXSplatHostD3D12RenderExample PRIVATE DirectXSplatExampleCommon)
+target_compile_features(DirectXSplatHostD3D12RenderExample PRIVATE cxx_std_20)
+
+add_executable(DirectXSplatOffscreenCaptureExample
+  offscreen_capture/main.cpp
+)
+target_link_libraries(DirectXSplatOffscreenCaptureExample PRIVATE DirectXSplatExampleCommon)
+target_compile_features(DirectXSplatOffscreenCaptureExample PRIVATE cxx_std_20)
+
+add_executable(DirectXSplatSceneUpdatesExample
+  scene_updates/main.cpp
+)
+target_link_libraries(DirectXSplatSceneUpdatesExample PRIVATE DirectXSplatExampleCommon)
+target_compile_features(DirectXSplatSceneUpdatesExample PRIVATE cxx_std_20)
+
+add_executable(DirectXSplatGpuResourceInteropExample
+  gpu_resource_interop/main.cpp
+)
+target_link_libraries(DirectXSplatGpuResourceInteropExample PRIVATE DirectXSplatExampleCommon)
+target_compile_features(DirectXSplatGpuResourceInteropExample PRIVATE cxx_std_20)
+
 add_executable(DirectXSplatBasicViewerExample
   basic_viewer/main.cpp
 )
@@ -16,14 +47,35 @@ add_executable(DirectXSplatBasicDrawExample
 target_link_libraries(DirectXSplatBasicDrawExample PRIVATE DirectXSplat::DirectXSplat)
 target_compile_features(DirectXSplatBasicDrawExample PRIVATE cxx_std_20)
 
+set(directxsplat_example_warning_targets
+  DirectXSplatExampleCommon
+  DirectXSplatHostD3D12RenderExample
+  DirectXSplatOffscreenCaptureExample
+  DirectXSplatSceneUpdatesExample
+  DirectXSplatGpuResourceInteropExample
+  DirectXSplatBasicViewerExample
+  DirectXSplatCameraViewerExample
+  DirectXSplatBasicDrawExample
+)
+
 if(COMMAND directxsplat_apply_project_warnings)
-  directxsplat_apply_project_warnings(DirectXSplatBasicViewerExample)
-  directxsplat_apply_project_warnings(DirectXSplatCameraViewerExample)
-  directxsplat_apply_project_warnings(DirectXSplatBasicDrawExample)
+  foreach(target_name IN LISTS directxsplat_example_warning_targets)
+    directxsplat_apply_project_warnings(${target_name})
+  endforeach()
 endif()
 
+set(directxsplat_example_executables
+  DirectXSplatHostD3D12RenderExample
+  DirectXSplatOffscreenCaptureExample
+  DirectXSplatSceneUpdatesExample
+  DirectXSplatGpuResourceInteropExample
+  DirectXSplatBasicViewerExample
+  DirectXSplatCameraViewerExample
+  DirectXSplatBasicDrawExample
+)
+
 if(COMMAND directxsplat_stage_dxc_runtime)
-  directxsplat_stage_dxc_runtime(DirectXSplatBasicViewerExample)
-  directxsplat_stage_dxc_runtime(DirectXSplatCameraViewerExample)
-  directxsplat_stage_dxc_runtime(DirectXSplatBasicDrawExample)
+  foreach(target_name IN LISTS directxsplat_example_executables)
+    directxsplat_stage_dxc_runtime(${target_name})
+  endforeach()
 endif()
