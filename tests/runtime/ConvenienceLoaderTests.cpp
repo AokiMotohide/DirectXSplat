@@ -95,7 +95,7 @@ TEST_CASE("LoadFromPly rejects .txt path") {
 }
 
 TEST_CASE("LoadFromPly loads tiny PLY") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_load_ply");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_convenience_load_ply");
 
   const auto loaded = directxsplat::LoadFromPly(WriteTinyPly(dir));
 
@@ -108,7 +108,7 @@ TEST_CASE("LoadFromPly loads tiny PLY") {
 }
 
 TEST_CASE("LoadFromFile routes by scene format") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_load_by_format");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_convenience_load_by_format");
 
   const auto ply = directxsplat::LoadFromFile(WriteTinyPly(dir));
   const auto splat = directxsplat::LoadFromFile(WriteSplatRecord(dir));
@@ -123,7 +123,7 @@ TEST_CASE("LoadFromFile routes by scene format") {
 }
 
 TEST_CASE("LoadCameraSet reads camera json") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_camera_json");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_convenience_camera_json");
   const std::filesystem::path path = dir / "cameras.json";
   WriteFile(path,
             "["
@@ -189,7 +189,7 @@ TEST_CASE("LoadCameraSet reads camera json") {
 }
 
 TEST_CASE("LoadCameraSet rejects malformed matrices") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_bad_camera_json");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_convenience_bad_camera_json");
   const std::filesystem::path path = dir / "cameras.json";
   WriteFile(path,
             "[{"
@@ -209,7 +209,7 @@ TEST_CASE("LoadCameraSet rejects malformed matrices") {
 }
 
 TEST_CASE("LoadCameraSet reads position rotation camera json") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_position_camera_json");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_convenience_position_camera_json");
   const std::filesystem::path path = dir / "cameras.json";
   WriteFile(path,
             "[{"
@@ -254,7 +254,7 @@ TEST_CASE("LoadCameraSet reads position rotation camera json") {
 }
 
 TEST_CASE("LoadCameraSet reads DirectXSplat camera json") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_facade_direct_camera_json");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_convenience_direct_camera_json");
   const std::filesystem::path path = dir / "cameras.json";
   WriteFile(path,
             "[{"

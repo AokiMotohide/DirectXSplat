@@ -17,7 +17,9 @@ class GaussianSplats::Impl {
   Aabb bounds;
 };
 
-class GaussianSplatsAccess {
+namespace internal {
+
+class GaussianSplatsStorage {
  public:
   static std::shared_ptr<GaussianSplats::Impl>& ImplOf(GaussianSplats& splats);
   static const std::shared_ptr<GaussianSplats::Impl>& ImplOf(const GaussianSplats& splats);
@@ -25,6 +27,8 @@ class GaussianSplatsAccess {
   static GaussianSplats Make(Scene scene);
   static std::shared_ptr<GaussianSplats::Impl>& EnsureImpl(GaussianSplats& splats);
 };
+
+}  // namespace internal
 
 GaussianSplats MakeGaussianSplats(Scene scene);
 const Aabb& BoundsFromSplats(const GaussianSplats& splats);

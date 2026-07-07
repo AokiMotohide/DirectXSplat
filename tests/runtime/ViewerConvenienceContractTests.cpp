@@ -44,7 +44,7 @@ std::filesystem::path WriteTinyPly(const std::filesystem::path& dir) {
 }  // namespace
 
 TEST_CASE("Viewer cannot SetSplats before Initialize") {
-  const std::filesystem::path dir = MakeTempDir("directxsplat_viewer_facade_contract");
+  const std::filesystem::path dir = MakeTempDir("directxsplat_viewer_convenience_contract");
   auto loaded = directxsplat::LoadFromPly(WriteTinyPly(dir));
   REQUIRE(loaded.ok());
 

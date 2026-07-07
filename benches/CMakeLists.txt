@@ -7,8 +7,6 @@ target_compile_features(DirectXSplatBench PRIVATE cxx_std_20)
 target_include_directories(DirectXSplatBench
   PRIVATE
     ${PROJECT_SOURCE_DIR}/directxsplat/src
-    ${PROJECT_SOURCE_DIR}/directxsplat/src/api
-    ${PROJECT_SOURCE_DIR}/directxsplat/src/core
 )
 
 target_link_libraries(DirectXSplatBench PRIVATE DirectXSplat::DirectXSplat)

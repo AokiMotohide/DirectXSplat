@@ -11,6 +11,10 @@
 
 namespace directxsplat {
 
+namespace internal {
+class GaussianSplatsStorage;
+}
+
 enum class RenderType {
   Color,
   Alpha,
@@ -69,7 +73,7 @@ class GaussianSplats {
 
  private:
   class Impl;
-  friend class GaussianSplatsAccess;
+  friend class internal::GaussianSplatsStorage;
 
   explicit GaussianSplats(std::shared_ptr<Impl> impl);
 

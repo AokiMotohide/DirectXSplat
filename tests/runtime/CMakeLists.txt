@@ -1,10 +1,10 @@
 add_executable(DirectXSplatRuntimeTests
-  DrawFacadeTests.cpp
-  FacadeLoaderTests.cpp
+  DrawConvenienceTests.cpp
+  ConvenienceLoaderTests.cpp
   PublicAdvancedTypesTests.cpp
-  PublicFacadeTypesTests.cpp
-  RuntimeFacadeTests.cpp
-  ViewerFacadeContractTests.cpp
+  PublicConvenienceTypesTests.cpp
+  RuntimeConvenienceTests.cpp
+  ViewerConvenienceContractTests.cpp
 )
 
 target_link_libraries(DirectXSplatRuntimeTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
@@ -17,7 +17,7 @@ if(COMMAND directxsplat_apply_project_warnings)
   directxsplat_apply_project_warnings(DirectXSplatRuntimeTests)
 endif()
 
-directxsplat_add_test_executable(DirectXSplatRuntimeTests "runtime;facade")
+directxsplat_add_test_executable(DirectXSplatRuntimeTests "runtime;convenience")
 
 if(COMMAND directxsplat_stage_dxc_runtime)
   directxsplat_stage_dxc_runtime(DirectXSplatRuntimeTests)
