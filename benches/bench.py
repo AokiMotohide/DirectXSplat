@@ -27,7 +27,7 @@ def find_runner(build_dir: Path | None) -> Path:
     candidates = sorted(search_root.rglob("DirectXSplatBench.exe"), key=lambda path: path.stat().st_mtime, reverse=True)
     if not candidates:
         raise FileNotFoundError(
-            "DirectXSplatBench.exe was not found. Build with -DDXSPLAT_BUILD_BENCHES=ON and target DirectXSplatBench."
+            "DirectXSplatBench.exe was not found. Build with -DDIRECTXSPLAT_BUILD_BENCHES=ON and target DirectXSplatBench."
         )
     return candidates[0]
 

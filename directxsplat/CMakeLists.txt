@@ -158,7 +158,7 @@ target_link_libraries(directxsplat
     comdlg32
 )
 
-if(DXSPLAT_BUILD_VIEWER)
+if(DIRECTXSPLAT_BUILD_VIEWER)
   if(NOT WIN32)
     message(STATUS "directxsplat_viewer skipped: requires WIN32")
   else()

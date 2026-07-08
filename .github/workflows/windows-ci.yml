@@ -42,10 +42,10 @@ jobs:
         run: >
           cmake -S . -B "build/core-${{ matrix.config }}"
           -G "Visual Studio 17 2022" -A x64
-          -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_VIEWER=ON
-          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
-          -DDXSPLAT_ENABLE_WARNINGS=ON
+          -DDIRECTXSPLAT_BUILD_TESTS=ON
+          -DDIRECTXSPLAT_BUILD_VIEWER=ON
+          -DDIRECTXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDIRECTXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build library, viewer, and tests
         run: >
@@ -92,10 +92,10 @@ jobs:
         run: >
           cmake -S . -B build/library-only
           -G "Visual Studio 17 2022" -A x64
-          -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_VIEWER=OFF
-          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
-          -DDXSPLAT_ENABLE_WARNINGS=ON
+          -DDIRECTXSPLAT_BUILD_TESTS=ON
+          -DDIRECTXSPLAT_BUILD_VIEWER=OFF
+          -DDIRECTXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDIRECTXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build library-only tests
         run: cmake --build build/library-only --config Release --parallel
@@ -114,11 +114,11 @@ jobs:
         run: >
           cmake -S . -B build/viewer
           -G "Visual Studio 17 2022" -A x64
-          -DDXSPLAT_BUILD_VIEWER=ON
-          -DDXSPLAT_BUILD_EXAMPLES=ON
-          -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
-          -DDXSPLAT_ENABLE_WARNINGS=ON
+          -DDIRECTXSPLAT_BUILD_VIEWER=ON
+          -DDIRECTXSPLAT_BUILD_EXAMPLES=ON
+          -DDIRECTXSPLAT_BUILD_TESTS=ON
+          -DDIRECTXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDIRECTXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build product viewer target
         run: cmake --build build/viewer --config Release --target directxsplat_viewer
@@ -153,11 +153,11 @@ jobs:
         run: >
           cmake -S . -B build/bench
           -G "Visual Studio 17 2022" -A x64
-          -DDXSPLAT_BUILD_BENCHES=ON
-          -DDXSPLAT_BUILD_TESTS=OFF
-          -DDXSPLAT_BUILD_VIEWER=OFF
-          -DDXSPLAT_ENABLE_GPU_TESTS=OFF
-          -DDXSPLAT_ENABLE_WARNINGS=ON
+          -DDIRECTXSPLAT_BUILD_BENCHES=ON
+          -DDIRECTXSPLAT_BUILD_TESTS=OFF
+          -DDIRECTXSPLAT_BUILD_VIEWER=OFF
+          -DDIRECTXSPLAT_ENABLE_GPU_TESTS=OFF
+          -DDIRECTXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build benchmark target
         run: cmake --build build/bench --config Release --target DirectXSplatBench --parallel
@@ -174,10 +174,10 @@ jobs:
         run: >
           cmake -S . -B build/warp-renderer
           -G "Visual Studio 17 2022" -A x64
-          -DDXSPLAT_BUILD_TESTS=ON
-          -DDXSPLAT_BUILD_VIEWER=OFF
-          -DDXSPLAT_ENABLE_GPU_TESTS=ON
-          -DDXSPLAT_ENABLE_WARNINGS=ON
+          -DDIRECTXSPLAT_BUILD_TESTS=ON
+          -DDIRECTXSPLAT_BUILD_VIEWER=OFF
+          -DDIRECTXSPLAT_ENABLE_GPU_TESTS=ON
+          -DDIRECTXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build renderer tests
         run: cmake --build build/warp-renderer --config Release --parallel

@@ -3,7 +3,7 @@
 ## Requirements
 - Build `DirectXSplatBench`.
   ```bash
-  $ cmake -S . -B build/bench -DDXSPLAT_BUILD_BENCHES=ON -DDXSPLAT_BUILD_TESTS=OFF
+  $ cmake -S . -B build/bench -DDIRECTXSPLAT_BUILD_BENCHES=ON -DDIRECTXSPLAT_BUILD_TESTS=OFF
   $ cmake --build build/bench --config Release --target DirectXSplatBench
   ```
 - Install `torch` with a CUDA version matching your local setup.

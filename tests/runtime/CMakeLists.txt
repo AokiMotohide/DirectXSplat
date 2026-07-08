@@ -9,7 +9,7 @@ add_executable(DirectXSplatRuntimeTests
 
 target_link_libraries(DirectXSplatRuntimeTests PRIVATE DirectXSplat::DirectXSplat doctest::doctest)
 target_compile_definitions(DirectXSplatRuntimeTests PRIVATE
-  DXSPLAT_ENABLE_GPU_TESTS=$<BOOL:${DXSPLAT_ENABLE_GPU_TESTS}>
+  DXSPLAT_ENABLE_GPU_TESTS=$<BOOL:${DIRECTXSPLAT_ENABLE_GPU_TESTS}>
 )
 target_compile_features(DirectXSplatRuntimeTests PRIVATE cxx_std_20)
 

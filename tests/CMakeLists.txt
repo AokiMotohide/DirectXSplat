@@ -6,7 +6,7 @@ endfunction()
 add_subdirectory(core)
 add_subdirectory(platform)
 
-if(DXSPLAT_BUILD_VIEWER)
+if(DIRECTXSPLAT_BUILD_VIEWER)
   add_subdirectory(viewer)
 endif()
 

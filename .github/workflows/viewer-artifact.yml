@@ -32,9 +32,9 @@ jobs:
         run: >
           cmake -S . -B build/viewer-package
           -G "Visual Studio 17 2022" -A x64
-          -DDXSPLAT_BUILD_VIEWER=ON
-          -DDXSPLAT_BUILD_TESTS=OFF
-          -DDXSPLAT_ENABLE_WARNINGS=ON
+          -DDIRECTXSPLAT_BUILD_VIEWER=ON
+          -DDIRECTXSPLAT_BUILD_TESTS=OFF
+          -DDIRECTXSPLAT_ENABLE_WARNINGS=ON
 
       - name: Build viewer
         run: cmake --build build/viewer-package --config Release --target directxsplat_viewer --parallel

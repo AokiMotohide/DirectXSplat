@@ -27,7 +27,7 @@ if(COMMAND directxsplat_stage_dxc_runtime)
   directxsplat_stage_dxc_runtime(DirectXSplatCoreTests)
 endif()
 
-if(DXSPLAT_ENABLE_GPU_TESTS)
+if(DIRECTXSPLAT_ENABLE_GPU_TESTS)
   add_executable(DirectXSplatRendererTests
     RendererTests.cpp
   )
@@ -50,5 +50,5 @@ if(DXSPLAT_ENABLE_GPU_TESTS)
     directxsplat_stage_dxc_runtime(DirectXSplatRendererTests)
   endif()
 else()
-  message(STATUS "D3D12/WARP renderer tests are disabled because DXSPLAT_ENABLE_GPU_TESTS=OFF")
+  message(STATUS "D3D12/WARP renderer tests are disabled because DIRECTXSPLAT_ENABLE_GPU_TESTS=OFF")
 endif()
