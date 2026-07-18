@@ -8,39 +8,78 @@ A C++/Direct3D 12 library for rendering 3D Gaussian Splats in D3D12.
 
 This is a C++/Direct3D 12 library for rendering scenes captured via the techniques described in [3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). It lets you load PLY, SPZ, `.splat`, SOG, and LOD metadata scenes and render them from a host D3D12 application.
 
-Modules include:
+## Overview
+- Fast rendering: GPU-accelerated D3D12 rasterization for high performance
+- Up to 2.4x faster than [gsplat](https://github.com/nerfstudio-project/gsplat) in matched-quality resident-scene benchmarks
+- Native embeddable D3D12 renderer with host-owned device, queue, command list, fences, and render targets
+- Memory-conscious: persistent uploaded scenes and renderer-owned resource reuse
+- No CUDA dependency for DirectXSplat rendering
+- Compatible with trained 3DGS scenes in PLY, SPZ, `.splat`, SOG, and LOD metadata formats
+- Convenience APIs included: interactive viewer via `Show(...)` and offscreen image capture via `Draw(...)`
 
-- `directxsplat`, the core library for loading scenes, uploading splats, managing residency, sorting, and rendering a frame.
-- `directxsplat/src/shaders`, the HLSL compute/raster shader code used by the renderer.
-- `directxsplat/src/platform`, internal D3D12/Win32 runtime code used by the viewer and tests.
-- `directxsplat/src/app`, the interactive viewer for opening scenes and inspecting renderer stats.
-- `examples/minimal_viewer`, a smaller windowed integration example without the full viewer UI.
-- `examples/offscreen_capture`, a small example for rendering a scene to an image.
-- `examples/scene_updates`, `examples/gpu_resource_interop`, and `examples/external_d3d12_integration`, focused examples for the public mutation, resource lease, and host-D3D12 integration APIs.
+## Requirements
+
+- Windows 10/11 with a Direct3D 12-capable GPU
+- Visual Studio 2022 with MSVC C++20 tools and Windows SDK
+- CMake >= 3.25
+- Python >= 3.10 only for benchmark scripts
+- Benchmark Python packages via `pip install -r benches/requirements.txt`
 
 ## Quick Start
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
-  -DDXSPLAT_BUILD_SAMPLE=ON `
-  -DDXSPLAT_BUILD_TESTS=ON
+  -DDIRECTXSPLAT_BUILD_EXAMPLES=ON `
+  -DDIRECTXSPLAT_BUILD_TESTS=ON
 
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Run the ImGui viewer:
+Run the convenience viewer:
 
 ```powershell
-.\build\bin\Release\DirectXSplatViewer.exe "C:\path\to\point_cloud.ply"
+.\build\bin\Release\DirectXSplatViewer.exe path\to\point_cloud.ply
 ```
 
-Build only the library:
+## Pre-trained Dataset
+
+This project can be used with scenes from [Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting). The official pre-trained models are available [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip).
+
+Download the datasets into the `models/` directory. For a scene laid out like:
+
+```text
+models/garden/
+  cameras.json
+  point_cloud/iteration_30000/point_cloud.ply
+```
+
+The commands below assume the release executables are on your `PATH` or in the current directory. If you built from source, prefix them with `.\build\bin\Release\`.
+
+run the C++ viewer with the trained 3DGS scene:
+
+```powershell
+$scene = "garden"
+DirectXSplatViewer.exe "models\$scene\point_cloud\iteration_30000\point_cloud.ply"
+```
+
+To open the same scene with the dataset camera set, build examples and run:
+
+```powershell
+$scene = "garden"
+DirectXSplatCameraViewerExample.exe `
+  "models\$scene\point_cloud\iteration_30000\point_cloud.ply" `
+  "models\$scene\cameras.json"
+```
+
+Replace `garden` with another downloaded scene, such as `bicycle`, `bonsai`, `counter`, `kitchen`, `room`, or `stump`.
+
+## Build Library
 
 ```powershell
 cmake -S . -B build-lib -G "Visual Studio 17 2022" -A x64 `
-  -DDXSPLAT_BUILD_SAMPLE=OFF `
-  -DDXSPLAT_BUILD_TESTS=OFF
+  -DDIRECTXSPLAT_BUILD_EXAMPLES=OFF `
+  -DDIRECTXSPLAT_BUILD_TESTS=OFF
 
 cmake --build build-lib --config Release --target directxsplat
 ```
@@ -66,8 +105,8 @@ Install:
 
 ```powershell
 cmake -S . -B build-install -G "Visual Studio 17 2022" -A x64 `
-  -DDXSPLAT_BUILD_SAMPLE=OFF `
-  -DDXSPLAT_BUILD_TESTS=OFF `
+  -DDIRECTXSPLAT_BUILD_EXAMPLES=OFF `
+  -DDIRECTXSPLAT_BUILD_TESTS=OFF `
   -DCMAKE_INSTALL_PREFIX="$PWD\install"
 
 cmake --build build-install --config Release --target install
@@ -83,97 +122,176 @@ target_link_libraries(my_app PRIVATE DirectXSplat::DirectXSplat)
 target_compile_features(my_app PRIVATE cxx_std_20)
 ```
 
+Configure the consuming project with the DirectXSplat install prefix:
+
+```powershell
+cmake -S my-app -B my-app-build -DCMAKE_PREFIX_PATH="$PWD\install"
+cmake --build my-app-build --config Release
+```
+
 As a subproject, examples and tests are off by default:
 
 ```cmake
-add_subdirectory(external/dxsplat)
+add_subdirectory(external/directxsplat)
 target_link_libraries(my_app PRIVATE DirectXSplat::DirectXSplat)
 ```
 
-## Minimal Integration
+## Primary API
 
-DirectXSplat does not own your swapchain or frame loop. You provide the D3D12 device, direct queue, command list, and submission fence.
-
-```cpp
-#include "dxsplat/context.h"
-#include "dxsplat/io.h"
-#include "dxsplat/renderer.h"
-
-directxsplat::D3D12Context context;
-directxsplat::Status status = context.Initialize(device, directQueue, directFence);
-if (!status.ok) return status;
-
-directxsplat::Renderer renderer;
-status = renderer.Initialize(context);
-if (!status.ok) return status;
-
-directxsplat::StatusOr<directxsplat::Scene> loaded = directxsplat::LoadSceneFromFile(scenePath);
-if (!loaded.ok()) return loaded.status;
-
-directxsplat::UploadedSceneHandle sceneHandle;
-status = renderer.CreateUploadedScene(loaded.value, sceneHandle);
-if (!status.ok) return status;
-```
-
-Per frame:
+Use the renderer API when DirectXSplat is embedded into an existing D3D12 renderer. Your application provides the D3D12 device, direct queue, command lists, fences, render targets, and frame loop. DirectXSplat records splat rendering commands into the command list you provide.
 
 ```cpp
-directxsplat::RenderInput input{};
-input.view = view;
-input.proj = proj;
-input.cameraPosition = cameraPosition;
-input.viewportWidth = width;
-input.viewportHeight = height;
-input.nearPlane = 0.1f;
-input.farPlane = 5000.0f;
-input.frameIndex = frameIndex;
-input.settings.antialiasing = true;
-input.settings.fastCulling = true;
+#include <directxsplat/context.h>
+#include <directxsplat/io.h>
+#include <directxsplat/renderer.h>
 
-directxsplat::RenderTargetBinding target{};
-target.colorTarget = backBuffer;
-target.colorRtv = rtv;
-target.colorFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-target.colorStateBefore = D3D12_RESOURCE_STATE_PRESENT;
-target.colorStateAfter = D3D12_RESOURCE_STATE_PRESENT;
-target.viewport = viewport;
-target.scissor = scissor;
+struct DirectXSplatSession {
+  directxsplat::D3D12Context context;
+  directxsplat::Renderer renderer;
+  directxsplat::UploadedSceneHandle scene;
+};
 
-directxsplat::RenderFrameContext frameContext{};
-frameContext.fence = directFence;
-frameContext.completedFenceValue = directFence->GetCompletedValue();
-frameContext.submissionFenceValue = fenceValueYouWillSignalAfterExecute;
-frameContext.frameIndex = frameIndex;
+directxsplat::Status CreateDirectXSplatSession(DirectXSplatSession& session,
+                                               ID3D12Device* device,
+                                               ID3D12CommandQueue* directQueue,
+                                               ID3D12Fence* directFence,
+                                               const char* scenePath) {
+  directxsplat::Status status = session.context.Initialize(device, directQueue, directFence);
+  if (!status.ok) {
+    return status;
+  }
 
-directxsplat::RenderPreparationResult preparation{};
-status = renderer.PrepareSceneForRender(sceneHandle, input, frameContext, &preparation);
-if (!status.ok) return status;
+  status = session.renderer.Initialize(session.context);
+  if (!status.ok) {
+    return status;
+  }
 
-directxsplat::RenderResult result{};
-status = renderer.Render(commandList, target, sceneHandle, input, frameContext, result);
-if (!status.ok && !result.submission.submissionRequired) return status;
+  directxsplat::StatusOr<directxsplat::Scene> loaded = directxsplat::LoadSceneFromFile(scenePath);
+  if (!loaded.ok()) {
+    return loaded.status;
+  }
 
-if (result.submission.uploadSyncPoint.IsValid()) {
-  directQueue->Wait(result.submission.uploadSyncPoint.fence, result.submission.uploadSyncPoint.value);
+  return session.renderer.CreateUploadedScene(loaded.value, session.scene);
 }
-
-directQueue->ExecuteCommandLists(1, &commandList);
-directQueue->Signal(directFence, frameContext.submissionFenceValue);
-
-if (!status.ok) return status;
 ```
+
+Pass a reset, open direct command list to the frame function. It records the DirectXSplat work, closes the command list, submits it on the same direct queue used to initialize the context, and signals the frame fence.
+
+```cpp
+directxsplat::Status RenderDirectXSplatFrame(DirectXSplatSession& session,
+                                             ID3D12GraphicsCommandList* commandList,
+                                             ID3D12CommandQueue* directQueue,
+                                             ID3D12Fence* directFence,
+                                             ID3D12Resource* colorTarget,
+                                             D3D12_CPU_DESCRIPTOR_HANDLE colorRtv,
+                                             DXGI_FORMAT colorFormat,
+                                             D3D12_RESOURCE_STATES colorStateBefore,
+                                             D3D12_RESOURCE_STATES colorStateAfter,
+                                             D3D12_VIEWPORT viewport,
+                                             D3D12_RECT scissor,
+                                             const directxsplat::RenderInput& input,
+                                             uint64_t submissionFenceValue) {
+  directxsplat::RenderFrameContext frameContext{};
+  frameContext.fence = directFence;
+  frameContext.completedFenceValue = directFence->GetCompletedValue();
+  frameContext.submissionFenceValue = submissionFenceValue;
+  frameContext.frameIndex = input.frameIndex;
+
+  directxsplat::RenderPreparationResult preparation{};
+  directxsplat::Status status =
+      session.renderer.PrepareSceneForRender(session.scene, input, frameContext, &preparation);
+  if (!status.ok) {
+    return status;
+  }
+
+  directxsplat::RenderTargetBinding target{};
+  target.colorTarget = colorTarget;
+  target.colorRtv = colorRtv;
+  target.colorFormat = colorFormat;
+  target.colorStateBefore = colorStateBefore;
+  target.colorStateAfter = colorStateAfter;
+  target.transitionMode = directxsplat::ResourceTransitionMode::LibraryManaged;
+  target.viewport = viewport;
+  target.scissor = scissor;
+
+  directxsplat::RenderResult result{};
+  status = session.renderer.Render(commandList, target, session.scene, input, frameContext, result);
+  if (!status.ok && !result.submission.submissionRequired) {
+    return status;
+  }
+
+  if (result.submission.uploadSyncPoint.IsValid()) {
+    HRESULT hr = directQueue->Wait(result.submission.uploadSyncPoint.fence,
+                                   result.submission.uploadSyncPoint.value);
+    if (FAILED(hr)) {
+      session.renderer.NotifyDeviceLost();
+      return directxsplat::Status::Error("failed waiting for DirectXSplat upload sync point");
+    }
+  }
+
+  HRESULT hr = commandList->Close();
+  if (FAILED(hr)) {
+    session.renderer.NotifyDeviceLost();
+    return directxsplat::Status::Error("failed closing DirectXSplat command list");
+  }
+
+  ID3D12CommandList* commandLists[] = {commandList};
+  directQueue->ExecuteCommandLists(1, commandLists);
+  hr = directQueue->Signal(directFence, frameContext.submissionFenceValue);
+  if (FAILED(hr)) {
+    session.renderer.NotifyDeviceLost();
+    return directxsplat::Status::Error("failed signaling DirectXSplat frame fence");
+  }
+
+  return status;
+}
+```
+
+Shutdown is explicit:
+
+```cpp
+session.renderer.DestroyUploadedScene(session.scene);
+session.renderer.Shutdown();
+session.context.Shutdown();
+```
+
+## Ownership and Threading
+
+- `D3D12Context` stores non-owning pointers and does not retain COM references. Keep the supplied device, queues, and fences alive until `Renderer::Shutdown()` and `D3D12Context::Shutdown()` complete.
+- `Renderer::Initialize(...)` retains internal COM references to the D3D12 objects it uses. The host still owns command allocators, command lists, queue submission order, fence values, render targets, and device-lost recovery.
+- Renderer calls may come from separate host threads, but the host must synchronize its own D3D12 objects. Never record into the same command list or reset the same command allocator concurrently.
+- Rendering and mutation are mutually exclusive for the same uploaded scene. `BeginSceneMutation(...)` may wait for active render encoding to finish, and every successful call must be paired with `EndSceneMutation(...)`.
+- Multiple `Renderer` instances may share one context when the host coordinates command lists, queue ordering, and unique fence values across all instances.
 
 ## Frame Submission Contract
 
-`RenderFrameContext` is required for rendering. DirectXSplat records into your command list and uses the frame context to track when renderer-owned GPU resources can be reused or released.
+`RenderFrameContext` is required for rendering. DirectXSplat uses it to track when renderer-owned GPU resources can be reused or released.
 
 Required fields:
 
-- `frameContext.fence` must be the same direct-queue fence passed through `D3D12Context`.
-- `submissionFenceValue` must be a future value, not an already completed value.
+- `fence` must be the same direct-queue fence passed to `D3D12Context::Initialize(...)`.
+- `completedFenceValue` must be the latest known completed value for that fence, normally read from `directFence->GetCompletedValue()`.
+- `submissionFenceValue` must be nonzero, unique for the submitted frame, greater than every value previously signaled on that fence, and greater than `completedFenceValue`.
+- `frameIndex` should be the host frame index for the render input.
+
+Submission rules:
+
+- Call `PrepareSceneForRender(...)` before `Render(...)` for the same scene, input, and frame context.
+- Pass a reset, open command list to `Render(...)`, then close it before submission.
 - If `RenderResult::submission.uploadSyncPoint` is valid, make the direct queue wait on it before executing the command list.
+- Execute the command list and signal `submissionFenceValue` on the same direct queue used to initialize the context. Signal only after all work for that frame has been submitted.
+- Pass the fence's resulting completion progress back through `completedFenceValue` on future frames.
 - If `Render` returns an error with `submissionRequired == true`, command-list work may already be recorded. Submit/signal it or enter device-lost cleanup.
 - If queue execution or signaling fails after renderer work was recorded, call `renderer.NotifyDeviceLost()` before shutdown.
+- Use `ResourceTransitionMode::LibraryManaged` when DirectXSplat should transition the target from `colorStateBefore` to `colorStateAfter`. Use `CallerManaged` when your renderer handles those transitions.
+
+## Render Target Contract
+
+- `colorRtv` must describe `colorTarget`, and `colorFormat` must match the RTV's single-sampled render-target format. Unsupported formats fail pipeline creation.
+- With `ResourceTransitionMode::LibraryManaged`, the resource must be in `colorStateBefore` when rendering begins; DirectXSplat transitions it to `colorStateAfter`. With `CallerManaged`, the host must perform the required color, depth, and motion-vector transitions.
+- `viewport` and `scissor` must be valid for the bound target and stay within its dimensions.
+- Color output uses source-alpha-over blending. The host owns render-target color-space selection and presentation.
+- Depth output is optional and contains approximate splat depth. When `RenderSettings::outputDepth` is enabled, provide a matching single-sampled `depthTarget`, `depthDsv`, `depthFormat`, and valid resource states.
 
 ## Renderer Configuration
 
@@ -195,21 +313,49 @@ renderer.Initialize(context, config);
 
 Most apps can start with defaults.
 
+## Scene Loading
+
+Advanced renderer integrations load `directxsplat::Scene` directly:
+
+```cpp
+directxsplat::StatusOr<directxsplat::Scene> LoadSceneForDirectXSplat(const char* scenePath,
+                                                                     const char* sourceImagesPath) {
+  directxsplat::SceneLoadOptions options{};
+  if (sourceImagesPath != nullptr) {
+    options.sourceImageDirectory = sourceImagesPath;
+  }
+  return directxsplat::LoadSceneFromFile(scenePath, options);
+}
+```
+
+`LoadSceneFromFile(...)` detects PLY, compressed PLY, SPZ, `.splat`, SOG, and hierarchical LOD metadata. The convenience loaders `LoadFromFile(...)`, `LoadFromPly(...)`, and `LoadFromSpz(...)` return `GaussianSplats` for the convenience wrappers.
+
 ## Scene Updates
 
 Whole scene:
 
 ```cpp
-renderer.UpdateUploadedScene(sceneHandle, newScene);
+directxsplat::Status status = renderer.UpdateUploadedScene(sceneHandle, newScene);
+if (!status.ok) {
+  return status;
+}
 ```
 
 Chunk mutation:
 
 ```cpp
 directxsplat::SceneMutationToken token;
-renderer.BeginSceneMutation(sceneHandle, token);
-renderer.AddUploadedChunk(token, gaussianSet, outChunkHandle);
-renderer.EndSceneMutation(token);
+directxsplat::Status status = renderer.BeginSceneMutation(sceneHandle, token);
+if (!status.ok) {
+  return status;
+}
+
+status = renderer.AddUploadedChunk(token, gaussianSet, outChunkHandle);
+directxsplat::Status endStatus = renderer.EndSceneMutation(token);
+if (!status.ok) {
+  return status;
+}
+return endStatus;
 ```
 
 Available chunk operations:
@@ -224,47 +370,127 @@ Available chunk operations:
 
 ## GPU Resource Interop
 
+`GetUploadedSceneGpuResources(...)` returns a non-leasing snapshot. `AcquireUploadedSceneGpuResources(...)` returns a lease for external GPU work that references renderer-owned resources.
+Reset and open `externalCommandList` before recording external work. Submit every command that references the leased resources before signaling the lease fence.
+
 ```cpp
 directxsplat::UploadedSceneGpuResources resources{};
-status = renderer.AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources);
+directxsplat::Status status =
+    renderer.AcquireUploadedSceneGpuResources(sceneHandle, frameContext, resources);
 if (!status.ok) return status;
 
 if (resources.submission.uploadSyncPoint.IsValid()) {
-  directQueue->Wait(resources.submission.uploadSyncPoint.fence, resources.submission.uploadSyncPoint.value);
+  HRESULT hr = directQueue->Wait(resources.submission.uploadSyncPoint.fence,
+                                 resources.submission.uploadSyncPoint.value);
+  if (FAILED(hr)) {
+    renderer.NotifyDeviceLost();
+    return directxsplat::Status::Error("failed waiting for DirectXSplat upload sync point");
+  }
 }
 
-directQueue->Signal(resources.leaseFence, resources.leaseFenceValue);
+// Record external commands that reference resources into externalCommandList.
+
+HRESULT hr = externalCommandList->Close();
+if (FAILED(hr)) {
+  renderer.NotifyDeviceLost();
+  return directxsplat::Status::Error("failed closing external command list");
+}
+
+ID3D12CommandList* commandLists[] = {externalCommandList};
+directQueue->ExecuteCommandLists(1, commandLists);
+
+// Release the lease only after submitting every command that uses its resources.
+hr = directQueue->Signal(resources.leaseFence, resources.leaseFenceValue);
+if (FAILED(hr)) {
+  renderer.NotifyDeviceLost();
+  return directxsplat::Status::Error("failed signaling DirectXSplat resource lease fence");
+}
 ```
 
-Returned resources are renderer-owned. Respect `callerMayTransition`, and do not cache raw resource pointers beyond the lease.
-Use `GetUploadedSceneGpuResources` only for a non-leasing snapshot; use `AcquireUploadedSceneGpuResources` before recording external GPU work that references the returned resources.
+Returned resources are renderer-owned. Respect `callerMayTransition` and `callerMayWrite`, and do not cache raw resource pointers beyond the snapshot or lease lifetime.
+Use `GetUploadedSceneGpuResources` only for a non-leasing snapshot; use `AcquireUploadedSceneGpuResources` before recording external GPU work that references the returned resources. After submitting that external GPU work, signal `resources.leaseFence` with `resources.leaseFenceValue`.
+
+## Convenience Wrappers
+
+The convenience API creates the viewer or an owned runtime for you. It is useful for tools, smoke tests, screenshots, and simple applications that do not need to integrate with an existing D3D12 frame loop.
+
+```cpp
+#include <directxsplat/directxsplat.h>
+
+auto splats = directxsplat::LoadFromPly("point_cloud.ply");
+if (!splats.ok()) {
+  return splats.status;
+}
+
+directxsplat::Status status = directxsplat::Show(splats.value);
+if (!status.ok) {
+  return status;
+}
+```
+
+`Draw(...)` is an owned-runtime convenience capture path. It creates its own D3D12 runtime, renders one image, reads pixels back to the CPU, and returns `ImageRgba8`. It is not the production render loop and is not the benchmark timing path.
+
+```cpp
+#include <directxsplat/directxsplat.h>
+
+auto splats = directxsplat::LoadFromPly("point_cloud.ply");
+if (!splats.ok()) {
+  return splats.status;
+}
+
+directxsplat::CameraSet cameras = directxsplat::MakeOrbitCameraSet(splats.value, 1, 512, 512);
+
+directxsplat::DrawOptions options{};
+options.width = 512;
+options.height = 512;
+
+auto image = directxsplat::Draw(splats.value, cameras.cameras[0], options);
+if (!image.ok()) {
+  return image.status;
+}
+```
 
 ## Examples
 
 | Target | Executable | Purpose |
 |---|---|---|
-| `directxsplat_viewer` | `DirectXSplatViewer.exe` | Interactive viewer. |
-| `minimal_viewer` | `DirectXSplatMinimalViewer.exe` | Small windowed integration example. |
-| `offscreen_capture` | `DirectXSplatOffscreenCapture.exe` | Render one image to PPM. |
-| `external_d3d12_integration` | `DirectXSplatExternalD3D12Integration.exe` | Host-owned D3D12 setup. |
-| `scene_updates` | `DirectXSplatSceneUpdates.exe` | Scene/chunk mutation. |
-| `gpu_resource_interop` | `DirectXSplatGpuResourceInterop.exe` | Resource lease/export. |
+| `DirectXSplatHostD3D12RenderExample` | `DirectXSplatHostD3D12RenderExample.exe` | Host-owned D3D12 render submission. |
+| `DirectXSplatOffscreenCaptureExample` | `DirectXSplatOffscreenCaptureExample.exe` | Direct renderer capture to PPM. |
+| `DirectXSplatSceneUpdatesExample` | `DirectXSplatSceneUpdatesExample.exe` | Uploaded scene/chunk mutation. |
+| `DirectXSplatGpuResourceInteropExample` | `DirectXSplatGpuResourceInteropExample.exe` | Renderer-owned GPU resource lease. |
+| `directxsplat_viewer` | `DirectXSplatViewer.exe` | Convenience interactive viewer. |
+| `DirectXSplatBasicViewerExample` | `DirectXSplatBasicViewerExample.exe` | Convenience scene viewer. |
+| `DirectXSplatCameraViewerExample` | `DirectXSplatCameraViewerExample.exe` | Convenience viewer with camera set. |
+| `DirectXSplatBasicDrawExample` | `DirectXSplatBasicDrawExample.exe` | Convenience one-image capture. |
+
+## Benchmarks
+
+Tested on NVIDIA GeForce RTX 4070 SUPER, Windows 11. FPS measures resident-scene, single-camera GPU render throughput; scene loading, initial upload, warmup, GPU-to-CPU readback, UI, and presentation are excluded.
+
+| Implementation | Dataset | #imgs | Resolution | #splats | PSNR | FPS |
+|---|---|---:|---:|---:|---:|---:|
+| DirectXSplat | bicycle | 194 | 1237x822 | 6,131,954 | 19.17 +/- 1.71 | **382.51** |
+| gsplat | bicycle | 194 | 1237x822 | 6,131,954 | 19.17 +/- 1.60 | 165.82 |
+| DirectXSplat | garden | 185 | 1297x840 | 5,834,784 | **18.99 +/- 0.75** | **319.14** |
+| gsplat | garden | 185 | 1297x840 | 5,834,784 | 18.96 +/- 0.74 | 131.68 |
+| DirectXSplat | treehill | 141 | 1267x832 | 3,783,761 | **20.24 +/- 2.64** | **491.86** |
+| gsplat | treehill | 141 | 1267x832 | 3,783,761 | 20.20 +/- 2.69 | 224.86 |
+
+See [benches/README.md](benches/README.md) for setup, methodology, full results, and gsplat tuning details.
 
 ## Build Options
 
 | Option | Default | Description |
 |---|---:|---|
-| `DXSPLAT_BUILD_SAMPLE` | `ON` top-level, `OFF` as subproject | Build examples. |
-| `DXSPLAT_BUILD_TESTS` | `ON` top-level, `OFF` as subproject | Build tests. |
-| `DXSPLAT_ENABLE_GPU_TESTS` | `ON` | Enable renderer GPU tests when supported. |
-| `DXSPLAT_ENABLE_WARNINGS` | `ON` | Enable warning flags. |
-| `DXSPLAT_WARNINGS_AS_ERRORS` | `OFF` | Treat warnings as errors. |
+| `DIRECTXSPLAT_BUILD_TESTS` | `ON` top-level, `OFF` as subproject | Build tests. |
+| `DIRECTXSPLAT_BUILD_VIEWER` | `ON` top-level, `OFF` as subproject | Build the DirectXSplat viewer executable. |
+| `DIRECTXSPLAT_BUILD_EXAMPLES` | `OFF` | Build examples. |
+| `DIRECTXSPLAT_BUILD_BENCHES` | `OFF` | Build benchmark harnesses. |
+| `DIRECTXSPLAT_ENABLE_GPU_TESTS` | `ON` | Enable renderer GPU tests when supported. |
+| `DIRECTXSPLAT_ENABLE_WARNINGS` | `ON` | Enable warning flags. |
+| `DIRECTXSPLAT_WARNINGS_AS_ERRORS` | `OFF` | Treat warnings as errors. |
 
-## CI Coverage
-
-CI builds the library, examples, CPU tests, loader/security regressions, layout invariants, and install/export smoke tests.
-
-Hosted CI does not fully validate the hardware D3D12 renderer path. Run GPU tests on a local D3D12 machine before release.
+The previous `DXSPLAT_*` option names are still accepted as compatibility aliases.
 
 ## License
 

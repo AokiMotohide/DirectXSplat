@@ -112,7 +112,8 @@ int main(int argc, char** argv) {
     return directxsplat_examples::PrintError("wait for resource uploads", status);
   }
 
-  // External GPU work that references leased resources must be submitted before signaling the lease fence.
+  // This sample only inspects resource metadata on the CPU, so no external GPU work is recorded.
+  // A real interop path must submit every command list that uses the leased resources before signaling this fence.
   if (resources.leaseFence != nullptr && resources.leaseFenceValue != 0) {
     status = host.SignalFence(resources.leaseFence, resources.leaseFenceValue);
     if (!status.ok) {
