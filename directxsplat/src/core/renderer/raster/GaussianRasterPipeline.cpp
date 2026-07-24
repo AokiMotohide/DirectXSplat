@@ -2237,37 +2237,37 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
   ComPtr<ID3D12Resource> drawArgsBuffer;
 
   s = CreateDefaultBuffer(keyBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortKeysBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortKeysBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(keyBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortKeysTempBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortKeysTempBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(valueBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortValuesBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortValuesBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(valueBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortValuesTempBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortValuesTempBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(kVisibleCounterBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, visibleCounterBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, visibleCounterBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(sizeof(SortMetaGpu), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortMetaBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortMetaBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(passHistogramBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepPassHistogramBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepPassHistogramBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(globalHistogramBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepGlobalHistogramBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepGlobalHistogramBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(oneSweepIndexBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepIndexBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepIndexBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(oneSweepDispatchArgsBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepDispatchArgsBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepDispatchArgsBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(16u, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, drawArgsBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, drawArgsBuffer);
   if (!s.ok) return s;
 
   s = ReserveRetiredResourceSlots(11);
@@ -2307,17 +2307,17 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
   scratch.oneSweepDispatchArgsBuffer = std::move(oneSweepDispatchArgsBuffer);
   scratch.drawArgsBuffer = std::move(drawArgsBuffer);
 
-  scratch.sortKeysState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortKeysTempState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortValuesState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortValuesTempState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.visibleCounterState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortMetaState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepPassHistogramState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepGlobalHistogramState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepIndexState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepDispatchArgsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.drawArgsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  scratch.sortKeysState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortKeysTempState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortValuesState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortValuesTempState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.visibleCounterState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortMetaState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepPassHistogramState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepGlobalHistogramState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepIndexState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepDispatchArgsState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.drawArgsState = D3D12_RESOURCE_STATE_COMMON;
   scratch.drawCapacity = newDrawCapacity;
   scratch.sortPairCapacity = newPairCapacity;
   scratch.oneSweepPartitionCount = newPartitionCount;
@@ -3244,6 +3244,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   }
 
   commandsRecorded = true;
+  // Host rendererが残したDATA_STATIC root descriptorを、UAV/RT状態変更より先に無効化する。
+  // D3D12 interopではgraphics root stateとcompute root stateが独立して保持される。
+  commandList->SetGraphicsRootSignature(rasterRootSignature_.Get());
   if (options != nullptr && options->hooks != nullptr) {
     Status hookStatus = invokeStage(options->hooks->beforePrepare, RenderHookStage::BeforePrepare);
     if (!hookStatus.ok) {

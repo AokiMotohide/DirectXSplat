@@ -20,7 +20,7 @@
 
 # include <Windows.h>
 # include <d3d12.h>
-# include <d3dx12.h>
+# include <d3dx12_root_signature.h>
 # include <dxcapi.h>
 # include <dxgi1_6.h>
 

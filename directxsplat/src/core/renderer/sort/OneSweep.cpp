@@ -3,7 +3,7 @@
 #include "EmbeddedShaders.h"
 
 #include <Windows.h>
-#include <d3dx12.h>
+#include <d3dx12_root_signature.h>
 #include <dxcapi.h>
 #include <dxgi1_6.h>
 #include <wrl/implements.h>
