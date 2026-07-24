@@ -3204,9 +3204,12 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   const bool compositeMeshDepth =
       target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
   const bool projectionLighting =
+      input.approximateRelighting &&
       input.projectionLight.enabled &&
       target.projectionCookie.resource != nullptr &&
       target.projectionCookieCpuSrv.ptr != 0;
+  const bool approximateRelighting =
+      input.approximateRelighting;
   D3D12_GPU_DESCRIPTOR_HANDLE projectionCookieGpuSrv{};
 
   auto invokeStage = [&](const std::function<void(const RenderHookContext&)>& hook, RenderHookStage stage) {
@@ -3255,7 +3258,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     return status;
   };
 
-  if (projectionLighting) {
+  if (approximateRelighting) {
     if (scratch->projectionDescriptorHeap == nullptr) {
       D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
       heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -3269,11 +3272,23 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     }
     const D3D12_CPU_DESCRIPTOR_HANDLE destination =
         scratch->projectionDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-    device_->CopyDescriptorsSimple(
-        1,
-        destination,
-        target.projectionCookieCpuSrv,
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (target.projectionCookie.resource != nullptr &&
+        target.projectionCookieCpuSrv.ptr != 0) {
+      device_->CopyDescriptorsSimple(
+          1,
+          destination,
+          target.projectionCookieCpuSrv,
+          D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    } else {
+      D3D12_SHADER_RESOURCE_VIEW_DESC nullCookieDesc{};
+      nullCookieDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      nullCookieDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+      nullCookieDesc.Shader4ComponentMapping =
+          D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      nullCookieDesc.Texture2D.MipLevels = 1;
+      device_->CreateShaderResourceView(
+          nullptr, &nullCookieDesc, destination);
+    }
     const UINT descriptorSize =
         device_->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -3306,7 +3321,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
       Status colorStatus = EnsureColorRasterPso(
           target.colorFormat,
           compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN,
-          projectionLighting);
+          approximateRelighting);
       if (!colorStatus.ok) {
         return finish(colorStatus);
       }
@@ -3574,6 +3589,12 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.projectionShadowBias =
       std::max(0.0f, input.projectionLight.shadowBias);
   prepBase.projectionShadowSlice = input.projectionLight.shadowSlice;
+  prepBase.approximateRelighting =
+      approximateRelighting ? 1u : 0u;
+  prepBase.environmentIntensity =
+      std::max(0.0f, input.environmentIntensity);
+  prepBase.bakedRelightingMix =
+      std::clamp(input.bakedRelightingMix, 0.0f, 1.0f);
   prepBase.sceneCount = runtime.sceneAtlasTail;
   prepBase.paddedCount = runtime.maxPrepareGroups;
   prepBase.setCount = runtime.batchedChunkCount;
@@ -3841,7 +3862,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     auto colorIt = colorRasterPsos_.find(ColorPsoKey(
         target.colorFormat,
         compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN,
-        projectionLighting));
+        approximateRelighting));
     if (colorIt == colorRasterPsos_.end() || colorIt->second == nullptr) {
       return finish(Status::Error("failed creating color raster pso"));
     }
@@ -3933,7 +3954,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
 
   commandList->SetPipelineState(colorRasterPso.Get());
   commandList->SetGraphicsRootSignature(rasterRootSignature_.Get());
-  if (projectionLighting) {
+  if (approximateRelighting) {
     ID3D12DescriptorHeap* heaps[] = {scratch->projectionDescriptorHeap.Get()};
     commandList->SetDescriptorHeaps(1, heaps);
   }
@@ -3943,7 +3964,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   commandList->SetGraphicsRootShaderResourceView(2, sortedValuesAddress);
   commandList->SetGraphicsRootShaderResourceView(3, runtime.batchedChunkParamsUpload->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(4, runtime.sceneIndexToChunkBuffer->GetGPUVirtualAddress());
-  if (projectionLighting) {
+  if (approximateRelighting) {
     commandList->SetGraphicsRootDescriptorTable(5, projectionCookieGpuSrv);
   }
   commandList->ExecuteIndirect(drawCommandSignature_.Get(), 1, scratch->drawArgsBuffer.Get(), 0, nullptr, 0);
@@ -3965,7 +3986,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     commandList->SetGraphicsRootShaderResourceView(2, sortedValuesAddress);
     commandList->SetGraphicsRootShaderResourceView(3, runtime.batchedChunkParamsUpload->GetGPUVirtualAddress());
     commandList->SetGraphicsRootShaderResourceView(4, runtime.sceneIndexToChunkBuffer->GetGPUVirtualAddress());
-    if (projectionLighting) {
+    if (approximateRelighting) {
       commandList->SetGraphicsRootDescriptorTable(5, projectionCookieGpuSrv);
     }
     commandList->ExecuteIndirect(drawCommandSignature_.Get(), 1, scratch->drawArgsBuffer.Get(), 0, nullptr, 0);

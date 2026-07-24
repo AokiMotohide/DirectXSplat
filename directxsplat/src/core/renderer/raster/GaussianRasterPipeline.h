@@ -162,8 +162,12 @@ class GaussianRasterPipeline {
     float projectionShadowBias = 0.001f;
     uint32_t projectionShadowSlice = 0;
     uint32_t projectionShadowPad = 0;
+    uint32_t approximateRelighting = 0;
+    float environmentIntensity = 1.0f;
+    float bakedRelightingMix = 0.65f;
+    uint32_t relightingPad = 0;
   };
-  static_assert(sizeof(PrepConstants) == 496);
+  static_assert(sizeof(PrepConstants) == 512);
 
   using RasterConstants = PrepConstants;
 

@@ -81,6 +81,10 @@ cbuffer PrepConstants : register(b0) {
   float gProjectionShadowBias;
   uint gProjectionShadowSlice;
   uint gProjectionShadowPad;
+  uint gApproximateRelighting;
+  float gEnvironmentIntensity;
+  float gBakedRelightingMix;
+  uint gRelightingPad;
 };
 
 ByteAddressBuffer gSceneGaussians : register(t0);
@@ -750,7 +754,28 @@ float4 PSMainBeautyProjected(BeautyVSOut i) : SV_Target {
   if (alpha < 1.0f / 255.0f) {
     discard;
   }
-  const float3 color = i.color + EvaluateProjectionLighting(i);
+  float3 color = i.color;
+  if (gApproximateRelighting != 0u) {
+    float3 normal = normalize(i.worldNormal);
+    const float3 cameraDirection = gWorldCameraPos - i.worldPosition;
+    if (dot(normal, cameraDirection) < 0.0f) {
+      normal = -normal;
+    }
+    const float hemisphere =
+        0.2f + 0.8f * saturate(normal.y * 0.5f + 0.5f);
+    const float3 fallbackAlbedo = saturate(i.color);
+    const float3 environment =
+        fallbackAlbedo *
+        max(gEnvironmentIntensity, 0.0f) *
+        hemisphere *
+        0.25f;
+    const float3 relit =
+        environment + EvaluateProjectionLighting(i);
+    color = lerp(
+        i.color,
+        relit,
+        saturate(gBakedRelightingMix));
+  }
   return float4(color, alpha);
 }
 
