@@ -52,9 +52,10 @@ constexpr size_t AlignUp(size_t value, size_t alignment) {
   return (value + alignment - 1u) & ~(alignment - 1u);
 }
 
-constexpr int ColorPsoKey(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat) {
+constexpr int ColorPsoKey(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat, bool projectionLighting) {
   return (static_cast<int>(colorFormat) & 0xffff) |
-         ((static_cast<int>(depthFormat) & 0xffff) << 16);
+         ((static_cast<int>(depthFormat) & 0x3fff) << 16) |
+         (projectionLighting ? 0x40000000 : 0);
 }
 
 enum TimestampQueryIndex : uint32_t {
@@ -294,6 +295,7 @@ Status GaussianRasterPipeline::Initialize(ID3D12Device* device,
   }
   uploadFenceValue_ = uploadFence_ != nullptr ? uploadFence_->GetCompletedValue() : 0;
   s = CreatePipelines();
+  std::fflush(stderr);
   if (!s.ok) {
     ShutdownInternal(true);
     return s;
@@ -2606,9 +2608,12 @@ Status GaussianRasterPipeline::InvokeHook(const std::function<void(const RenderH
   return Status::Ok();
 }
 
-Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat) {
+Status GaussianRasterPipeline::EnsureColorRasterPso(
+    DXGI_FORMAT colorFormat,
+    DXGI_FORMAT depthFormat,
+    bool projectionLighting) {
   std::lock_guard<std::mutex> colorLock(colorRasterMutex_);
-  const int cacheKey = ColorPsoKey(colorFormat, depthFormat);
+  const int cacheKey = ColorPsoKey(colorFormat, depthFormat, projectionLighting);
   auto existing = colorRasterPsos_.find(cacheKey);
   if (existing != colorRasterPsos_.end() && existing->second != nullptr) {
     return Status::Ok();
@@ -2622,7 +2627,10 @@ Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat, DXG
     return s;
   }
   s = CompileShader(embedded::kGaussianRasterShaderName, embedded::kGaussianRasterShaderSource,
-                    embedded::kGaussianRasterShaderSize, "PSMainBeauty", "ps_5_1", psBlob);
+                    embedded::kGaussianRasterShaderSize,
+                    projectionLighting ? "PSMainBeautyProjected" : "PSMainBeauty",
+                    "ps_5_1",
+                    psBlob);
   if (!s.ok) {
     return s;
   }
@@ -2874,6 +2882,7 @@ void GaussianRasterPipeline::Transition(ID3D12GraphicsCommandList* cmd, ID3D12Re
 }
 
 Status GaussianRasterPipeline::CreatePipelines() {
+  std::fflush(stderr);
   ComPtr<ID3DBlob> prepCs;
   ComPtr<ID3DBlob> fillSortTailCs;
   ComPtr<ID3DBlob> sortMetaCs;
@@ -2886,26 +2895,36 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSFillSortTail", "cs_5_1", fillSortTailCs);
   if (!s.ok) return s;
+  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSBuildSortMeta", "cs_5_1", sortMetaCs);
   if (!s.ok) return s;
+  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSBuildOneSweepDispatchArgs", "cs_5_1", buildSortDispatchArgsCs);
   if (!s.ok) return s;
+  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSReset", "cs_5_1", resetCs);
   if (!s.ok) return s;
+  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSFinalizeDrawArgs", "cs_5_1", finalizeCs);
   if (!s.ok) return s;
+  std::fflush(stderr);
 
+  const D3D12_STATIC_SAMPLER_DESC* pStaticSamplers = nullptr;
+  UINT staticSamplerCount = 0;
   auto createRootSignature = [&](D3D12_ROOT_PARAMETER* params, UINT paramCount,
                                  D3D12_ROOT_SIGNATURE_FLAGS flags,
                                  Microsoft::WRL::ComPtr<ID3D12RootSignature>& out,
                                  const char* label) -> Status {
+    std::fflush(stderr);
     D3D12_ROOT_SIGNATURE_DESC desc{};
     desc.NumParameters = paramCount;
     desc.pParameters = params;
+    desc.NumStaticSamplers = staticSamplerCount;
+    desc.pStaticSamplers = pStaticSamplers;
     desc.Flags = flags;
     ComPtr<ID3DBlob> blob;
     ComPtr<ID3DBlob> err;
@@ -2916,6 +2935,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
                                             IID_PPV_ARGS(out.GetAddressOf())))) {
       return Status::Error(std::string("failed creating ") + label + " root signature");
     }
+    std::fflush(stderr);
     return Status::Ok();
   };
 
@@ -3019,7 +3039,30 @@ Status GaussianRasterPipeline::CreatePipelines() {
   }
 
   {
-    D3D12_ROOT_PARAMETER params[5]{};
+    D3D12_DESCRIPTOR_RANGE projectionCookieRange{};
+    projectionCookieRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    projectionCookieRange.NumDescriptors = 1;
+    projectionCookieRange.BaseShaderRegister = 4;
+    projectionCookieRange.RegisterSpace = 0;
+    projectionCookieRange.OffsetInDescriptorsFromTableStart = 0;
+
+    D3D12_STATIC_SAMPLER_DESC projectionSampler{};
+    projectionSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    projectionSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    projectionSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    projectionSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    projectionSampler.MaxAnisotropy = 1;
+    projectionSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    projectionSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+    projectionSampler.MinLOD = 0.0f;
+    projectionSampler.MaxLOD = D3D12_FLOAT32_MAX;
+    projectionSampler.ShaderRegister = 0;
+    projectionSampler.RegisterSpace = 0;
+    projectionSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    pStaticSamplers = &projectionSampler;
+    staticSamplerCount = 1;
+
+    D3D12_ROOT_PARAMETER params[6]{};
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     params[0].Descriptor.ShaderRegister = 0;
     params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -3035,11 +3078,16 @@ Status GaussianRasterPipeline::CreatePipelines() {
     params[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
     params[4].Descriptor.ShaderRegister = 3;
     params[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    params[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    params[5].DescriptorTable.NumDescriptorRanges = 1;
+    params[5].DescriptorTable.pDescriptorRanges = &projectionCookieRange;
+    params[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     s = createRootSignature(params, static_cast<UINT>(std::size(params)),
                             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
                             rasterRootSignature_, "raster");
     if (!s.ok) return s;
   }
+  std::fflush(stderr);
 
   auto createComputePso = [&](ID3D12RootSignature* rootSignature, ID3DBlob* shaderBlob,
                               Microsoft::WRL::ComPtr<ID3D12PipelineState>& out,
@@ -3071,7 +3119,9 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = oneSweep_->Initialize(device_.Get());
   if (!s.ok) return s;
 
-  s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN);
+  std::fflush(stderr);
+  s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN, false);
+  std::fflush(stderr);
   if (!s.ok) return s;
 
   {
@@ -3165,6 +3215,11 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
       input.settings.outputDepth && target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
   const bool compositeMeshDepth =
       target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
+  const bool projectionLighting =
+      input.projectionLight.enabled &&
+      target.projectionCookie.resource != nullptr &&
+      target.projectionCookieCpuSrv.ptr != 0;
+  D3D12_GPU_DESCRIPTOR_HANDLE projectionCookieGpuSrv{};
 
   auto invokeStage = [&](const std::function<void(const RenderHookContext&)>& hook, RenderHookStage stage) {
     return InvokeHook(hook, stage, commandList, publicSceneHandle, input, target, frameResources, stats);
@@ -3212,11 +3267,35 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     return status;
   };
 
+  if (projectionLighting) {
+    if (scratch->projectionDescriptorHeap == nullptr) {
+      D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+      heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+      heapDesc.NumDescriptors = 1;
+      heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+      if (FAILED(device_->CreateDescriptorHeap(
+              &heapDesc,
+              IID_PPV_ARGS(scratch->projectionDescriptorHeap.GetAddressOf())))) {
+        return finish(Status::Error("failed creating projection descriptor heap"));
+      }
+    }
+    const D3D12_CPU_DESCRIPTOR_HANDLE destination =
+        scratch->projectionDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    device_->CopyDescriptorsSimple(
+        1,
+        destination,
+        target.projectionCookieCpuSrv,
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    projectionCookieGpuSrv =
+        scratch->projectionDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+  }
+
   if (runtime.sceneGaussianCount > 0) {
     try {
       Status colorStatus = EnsureColorRasterPso(
           target.colorFormat,
-          compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN);
+          compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN,
+          projectionLighting);
       if (!colorStatus.ok) {
         return finish(colorStatus);
       }
@@ -3447,6 +3526,34 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.rgbaOffset = runtime.rgbaOffset;
   prepBase.shOffset = runtime.shOffset;
   prepBase.idOffset = runtime.idOffset;
+  std::memcpy(prepBase.model, input.model.m.data(), sizeof(prepBase.model));
+  prepBase.worldCameraPos[0] = input.worldCameraPosition.x;
+  prepBase.worldCameraPos[1] = input.worldCameraPosition.y;
+  prepBase.worldCameraPos[2] = input.worldCameraPosition.z;
+  prepBase.projectionEnabled = projectionLighting ? 1u : 0u;
+  std::memcpy(
+      prepBase.projectionViewProj,
+      input.projectionLight.viewProj.m.data(),
+      sizeof(prepBase.projectionViewProj));
+  prepBase.projectionPosition[0] = input.projectionLight.position.x;
+  prepBase.projectionPosition[1] = input.projectionLight.position.y;
+  prepBase.projectionPosition[2] = input.projectionLight.position.z;
+  prepBase.projectionLumens = std::max(0.0f, input.projectionLight.lumens);
+  prepBase.projectionColorTint[0] = input.projectionLight.colorTint.x;
+  prepBase.projectionColorTint[1] = input.projectionLight.colorTint.y;
+  prepBase.projectionColorTint[2] = input.projectionLight.colorTint.z;
+  prepBase.projectionBlackLevel = std::max(0.0f, input.projectionLight.blackLevel);
+  prepBase.projectionSolidAngle = std::max(0.0001f, input.projectionLight.solidAngle);
+  prepBase.projectionContrastRatio = std::max(1.0f, input.projectionLight.contrastRatio);
+  prepBase.projectionInputGamma = std::clamp(input.projectionLight.inputGamma, 0.1f, 8.0f);
+  prepBase.projectionWhiteLevel = std::clamp(input.projectionLight.whiteLevel, 0.0f, 4.0f);
+  prepBase.projectionSpatialUniformity =
+      std::clamp(input.projectionLight.spatialUniformity, 0.0f, 2.0f);
+  prepBase.projectionInputTransferFunction = input.projectionLight.inputTransferFunction;
+  prepBase.projectionInputTextureHardwareDecoded =
+      input.projectionLight.inputTextureHardwareDecoded ? 1u : 0u;
+  prepBase.projectionRadiometricProfileEnabled =
+      input.projectionLight.radiometricProfileEnabled ? 1u : 0u;
   prepBase.sceneCount = runtime.sceneAtlasTail;
   prepBase.paddedCount = runtime.maxPrepareGroups;
   prepBase.setCount = runtime.batchedChunkCount;
@@ -3713,7 +3820,8 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     std::lock_guard<std::mutex> colorLock(colorRasterMutex_);
     auto colorIt = colorRasterPsos_.find(ColorPsoKey(
         target.colorFormat,
-        compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN));
+        compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN,
+        projectionLighting));
     if (colorIt == colorRasterPsos_.end() || colorIt->second == nullptr) {
       return finish(Status::Error("failed creating color raster pso"));
     }
@@ -3805,12 +3913,19 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
 
   commandList->SetPipelineState(colorRasterPso.Get());
   commandList->SetGraphicsRootSignature(rasterRootSignature_.Get());
+  if (projectionLighting) {
+    ID3D12DescriptorHeap* heaps[] = {scratch->projectionDescriptorHeap.Get()};
+    commandList->SetDescriptorHeaps(1, heaps);
+  }
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
   commandList->SetGraphicsRootConstantBufferView(0, scratch->rasterConstantsUpload->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(1, runtime.sceneAtlasBuffer->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(2, sortedValuesAddress);
   commandList->SetGraphicsRootShaderResourceView(3, runtime.batchedChunkParamsUpload->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(4, runtime.sceneIndexToChunkBuffer->GetGPUVirtualAddress());
+  if (projectionLighting) {
+    commandList->SetGraphicsRootDescriptorTable(5, projectionCookieGpuSrv);
+  }
   commandList->ExecuteIndirect(drawCommandSignature_.Get(), 1, scratch->drawArgsBuffer.Get(), 0, nullptr, 0);
   writeTimestamp(kTimestampRasterEnd);
 
@@ -3830,6 +3945,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     commandList->SetGraphicsRootShaderResourceView(2, sortedValuesAddress);
     commandList->SetGraphicsRootShaderResourceView(3, runtime.batchedChunkParamsUpload->GetGPUVirtualAddress());
     commandList->SetGraphicsRootShaderResourceView(4, runtime.sceneIndexToChunkBuffer->GetGPUVirtualAddress());
+    if (projectionLighting) {
+      commandList->SetGraphicsRootDescriptorTable(5, projectionCookieGpuSrv);
+    }
     commandList->ExecuteIndirect(drawCommandSignature_.Get(), 1, scratch->drawArgsBuffer.Get(), 0, nullptr, 0);
     writeTimestamp(kTimestampDepthEnd);
     frameResources.depthOutput = DepthOutputKind::ApproximateSplatDepth;

@@ -22,6 +22,8 @@ struct RasterGaussian {
   float4 conicOpacity;
   float3 color;
   float viewDistance;
+  float3 worldPosition;
+  float3 worldNormal;
 };
 
 cbuffer PrepConstants : register(b0) {
@@ -59,12 +61,30 @@ cbuffer PrepConstants : register(b0) {
   uint gShOffset;
   uint gIdOffset;
   uint gPad3;
+  row_major float4x4 gModel;
+  float3 gWorldCameraPos;
+  uint gProjectionEnabled;
+  row_major float4x4 gProjectionViewProj;
+  float3 gProjectionPosition;
+  float gProjectionLumens;
+  float3 gProjectionColorTint;
+  float gProjectionBlackLevel;
+  float gProjectionSolidAngle;
+  float gProjectionContrastRatio;
+  float gProjectionInputGamma;
+  float gProjectionWhiteLevel;
+  float gProjectionSpatialUniformity;
+  uint gProjectionInputTransferFunction;
+  uint gProjectionInputTextureHardwareDecoded;
+  uint gProjectionRadiometricProfileEnabled;
 };
 
 ByteAddressBuffer gSceneGaussians : register(t0);
 StructuredBuffer<uint> gSortedSceneIndices : register(t1);
 StructuredBuffer<ChunkPrepGpu> gChunkPrep : register(t2);
 StructuredBuffer<uint> gSceneIndexToChunk : register(t3);
+Texture2D<float4> gProjectionCookie : register(t4);
+SamplerState gProjectionSampler : register(s0);
 
 static const uint kFormatFloat32 = 0u;
 static const uint kFormatFloat16 = 1u;
@@ -232,6 +252,34 @@ float3 ViewVector(float3 v) {
       gView[0][0] * v.x + gView[0][1] * v.y + gView[0][2] * v.z,
       gView[1][0] * v.x + gView[1][1] * v.y + gView[1][2] * v.z,
       gView[2][0] * v.x + gView[2][1] * v.y + gView[2][2] * v.z);
+}
+
+float3 ModelVector(float3 v) {
+  return float3(
+      gModel[0][0] * v.x + gModel[0][1] * v.y + gModel[0][2] * v.z,
+      gModel[1][0] * v.x + gModel[1][1] * v.y + gModel[1][2] * v.z,
+      gModel[2][0] * v.x + gModel[2][1] * v.y + gModel[2][2] * v.z);
+}
+
+float3 ApproximateGaussianNormal(float3 scale, float4 q) {
+  const float xx = q.x * q.x;
+  const float yy = q.y * q.y;
+  const float zz = q.z * q.z;
+  const float xy = q.x * q.y;
+  const float xz = q.x * q.z;
+  const float yz = q.y * q.z;
+  const float xw = q.x * q.w;
+  const float yw = q.y * q.w;
+  const float zw = q.z * q.w;
+  const float3 ex = float3(1.0 - 2.0 * (yy + zz), 2.0 * (xy + zw), 2.0 * (xz - yw));
+  const float3 ey = float3(2.0 * (xy - zw), 1.0 - 2.0 * (xx + zz), 2.0 * (yz + xw));
+  const float3 ez = float3(2.0 * (xz + yw), 2.0 * (yz - xw), 1.0 - 2.0 * (xx + yy));
+  const float3 localNormal =
+      scale.x <= scale.y && scale.x <= scale.z ? ex :
+      (scale.y <= scale.z ? ey : ez);
+  const float3 worldNormal = ModelVector(localNormal);
+  const float lengthSquared = dot(worldNormal, worldNormal);
+  return lengthSquared > 1.0e-10f ? normalize(worldNormal) : float3(0.0f, 1.0f, 0.0f);
 }
 
 float3x3 BuildViewCovariance(float3 scale, float4 q) {
@@ -462,6 +510,9 @@ bool BuildRasterGaussian(uint sceneIndex, out RasterGaussian outG) {
   outG.conicOpacity = float4(conic, opacity);
   outG.color = color;
   outG.viewDistance = length(posView4.xyz / max(abs(posView4.w), 1e-6f));
+  const float4 worldPosition = mul(gModel, float4(position, 1.0f));
+  outG.worldPosition = worldPosition.xyz / max(abs(worldPosition.w), 1.0e-6f);
+  outG.worldNormal = ApproximateGaussianNormal(scaled, rotation);
   return true;
 }
 
@@ -473,6 +524,8 @@ struct BeautyVSOut {
   nointerpolation float alphaCutPower : TEXCOORD3;
   nointerpolation float ndcDepth : TEXCOORD4;
   nointerpolation float viewDistance : TEXCOORD5;
+  nointerpolation float3 worldPosition : TEXCOORD6;
+  nointerpolation float3 worldNormal : TEXCOORD7;
 };
 
 struct DepthVSOut {
@@ -502,6 +555,8 @@ BeautyVSOut VSMainBeauty(uint vertexId : SV_VertexID, uint instanceId : SV_Insta
   o.alphaCutPower = g.alphaCutPower;
   o.ndcDepth = saturate(g.clipPos.z / max(g.clipPos.w, 1e-6));
   o.viewDistance = g.viewDistance;
+  o.worldPosition = g.worldPosition;
+  o.worldNormal = g.worldNormal;
   return o;
 }
 
@@ -523,6 +578,91 @@ DepthVSOut VSMainDepth(uint vertexId : SV_VertexID, uint instanceId : SV_Instanc
   o.ndcDepth = saturate(g.clipPos.z / max(g.clipPos.w, 1e-6));
   o.alphaCutPower = g.alphaCutPower;
   return o;
+}
+
+float SrgbToLinearChannel(float value) {
+  value = saturate(value);
+  return value <= 0.04045f ? value / 12.92f : pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+float3 ApplyProjectionEotf(float3 codeValue) {
+  codeValue = saturate(codeValue);
+  if (gProjectionInputTextureHardwareDecoded != 0u ||
+      gProjectionInputTransferFunction == 0u) {
+    return codeValue;
+  }
+  if (gProjectionInputTransferFunction == 1u) {
+    return float3(
+        SrgbToLinearChannel(codeValue.r),
+        SrgbToLinearChannel(codeValue.g),
+        SrgbToLinearChannel(codeValue.b));
+  }
+  if (gProjectionInputTransferFunction == 2u) {
+    return pow(codeValue, 2.2f);
+  }
+  if (gProjectionInputTransferFunction == 3u) {
+    return pow(codeValue, 2.4f);
+  }
+  return pow(codeValue, clamp(gProjectionInputGamma, 0.1f, 8.0f));
+}
+
+float3 EvaluateProjectionLighting(BeautyVSOut i) {
+  if (gProjectionEnabled == 0u) {
+    return float3(0.0f, 0.0f, 0.0f);
+  }
+  const float4 projectorClip =
+      mul(gProjectionViewProj, float4(i.worldPosition, 1.0f));
+  if (projectorClip.w <= 0.0f) {
+    return float3(0.0f, 0.0f, 0.0f);
+  }
+  const float3 projectorNdc = projectorClip.xyz / projectorClip.w;
+  float2 uv = projectorNdc.xy * 0.5f + float2(0.5f, 0.5f);
+  uv.y = 1.0f - uv.y;
+  if (any(uv < 0.0f) || any(uv > 1.0f) ||
+      projectorNdc.z < 0.0f || projectorNdc.z > 1.0f) {
+    return float3(0.0f, 0.0f, 0.0f);
+  }
+
+  float3 normal = normalize(i.worldNormal);
+  const float3 cameraDirection = gWorldCameraPos - i.worldPosition;
+  if (dot(normal, cameraDirection) < 0.0f) {
+    normal = -normal;
+  }
+  const float3 toProjector = gProjectionPosition - i.worldPosition;
+  const float distanceSquared = max(dot(toProjector, toProjector), 0.01f);
+  const float3 lightDirection = toProjector * rsqrt(distanceSquared);
+  const float ndotl = saturate(dot(normal, lightDirection));
+  if (ndotl <= 0.0f) {
+    return float3(0.0f, 0.0f, 0.0f);
+  }
+
+  float3 signal = ApplyProjectionEotf(
+      gProjectionCookie.SampleLevel(gProjectionSampler, uv, 0.0f).rgb);
+  const float blackFraction = saturate(max(
+      gProjectionBlackLevel,
+      1.0f / max(gProjectionContrastRatio, 1.0f)));
+  signal = blackFraction + (1.0f - blackFraction) * signal;
+  if (gProjectionRadiometricProfileEnabled != 0u) {
+    signal *=
+        clamp(gProjectionWhiteLevel, 0.0f, 4.0f) *
+        clamp(gProjectionSpatialUniformity, 0.0f, 2.0f);
+  }
+  signal *= gProjectionColorTint;
+
+  const float luminousIntensity =
+      max(gProjectionLumens, 0.0f) / max(gProjectionSolidAngle, 1.0e-4f);
+  const float illuminance = luminousIntensity * ndotl / distanceSquared;
+  const float3 viewDirection =
+      dot(cameraDirection, cameraDirection) > 1.0e-8f
+          ? normalize(cameraDirection)
+          : normal;
+  const float3 halfDirection = normalize(lightDirection + viewDirection);
+  const float roughness = 0.6f;
+  const float specular =
+      pow(saturate(dot(normal, halfDirection)), 24.0f) *
+      (1.0f - roughness) * 0.04f;
+  const float3 fallbackBrdf = i.color * 0.31830988618f + specular;
+  return signal * illuminance * fallbackBrdf;
 }
 
 float4 PSMainBeauty(BeautyVSOut i) : SV_Target {
@@ -553,6 +693,23 @@ float4 PSMainBeauty(BeautyVSOut i) : SV_Target {
   if (gGammaCorrection != 0u) {
     color = pow(saturate(color), 1.0f / 2.2f);
   }
+  return float4(color, alpha);
+}
+
+float4 PSMainBeautyProjected(BeautyVSOut i) : SV_Target {
+  const float r2 = dot(i.local, i.local);
+  if (r2 > 1.0f) {
+    discard;
+  }
+  const float power = -4.0f * r2;
+  if (power < i.alphaCutPower) {
+    discard;
+  }
+  const float alpha = min(0.99f, saturate(i.conicOpacity.w) * exp(power));
+  if (alpha < 1.0f / 255.0f) {
+    discard;
+  }
+  const float3 color = i.color + EvaluateProjectionLighting(i);
   return float4(color, alpha);
 }
 
