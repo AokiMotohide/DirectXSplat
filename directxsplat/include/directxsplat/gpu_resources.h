@@ -103,6 +103,8 @@ struct RenderTargetBinding {
 
   GpuTextureView projectionCookie{};
   D3D12_CPU_DESCRIPTOR_HANDLE projectionCookieCpuSrv{};
+  GpuTextureView projectionShadowMap{};
+  D3D12_CPU_DESCRIPTOR_HANDLE projectionShadowMapCpuSrv{};
 };
 
 struct RenderFrameContext {

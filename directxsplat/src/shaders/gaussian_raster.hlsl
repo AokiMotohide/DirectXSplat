@@ -77,6 +77,10 @@ cbuffer PrepConstants : register(b0) {
   uint gProjectionInputTransferFunction;
   uint gProjectionInputTextureHardwareDecoded;
   uint gProjectionRadiometricProfileEnabled;
+  uint gProjectionShadowReady;
+  float gProjectionShadowBias;
+  uint gProjectionShadowSlice;
+  uint gProjectionShadowPad;
 };
 
 ByteAddressBuffer gSceneGaussians : register(t0);
@@ -84,6 +88,7 @@ StructuredBuffer<uint> gSortedSceneIndices : register(t1);
 StructuredBuffer<ChunkPrepGpu> gChunkPrep : register(t2);
 StructuredBuffer<uint> gSceneIndexToChunk : register(t3);
 Texture2D<float4> gProjectionCookie : register(t4);
+Texture2DArray<float> gProjectionShadowMap : register(t5);
 SamplerState gProjectionSampler : register(s0);
 
 static const uint kFormatFloat32 = 0u;
@@ -636,6 +641,42 @@ float3 EvaluateProjectionLighting(BeautyVSOut i) {
     return float3(0.0f, 0.0f, 0.0f);
   }
 
+  float visibility = 1.0f;
+  if (gProjectionShadowReady != 0u) {
+    uint shadowWidth;
+    uint shadowHeight;
+    uint shadowLayers;
+    gProjectionShadowMap.GetDimensions(
+        shadowWidth, shadowHeight, shadowLayers);
+    const uint layer =
+        min(gProjectionShadowSlice, max(shadowLayers, 1u) - 1u);
+    const float2 shadowSize =
+        max(float2(shadowWidth, shadowHeight), float2(1.0f, 1.0f));
+    const int2 center =
+        int2(saturate(uv) * (shadowSize - float2(1.0f, 1.0f)));
+    visibility = 0.0f;
+    [unroll]
+    for (int y = -1; y <= 1; ++y) {
+      [unroll]
+      for (int x = -1; x <= 1; ++x) {
+        const int2 samplePixel = clamp(
+            center + int2(x, y),
+            int2(0, 0),
+            int2((int)shadowWidth - 1, (int)shadowHeight - 1));
+        const float shadowDepth =
+            gProjectionShadowMap.Load(int4(samplePixel, (int)layer, 0));
+        visibility +=
+            projectorNdc.z <= shadowDepth + gProjectionShadowBias
+                ? 1.0f
+                : 0.0f;
+      }
+    }
+    visibility *= 1.0f / 9.0f;
+    if (visibility <= 0.0f) {
+      return float3(0.0f, 0.0f, 0.0f);
+    }
+  }
+
   float3 signal = ApplyProjectionEotf(
       gProjectionCookie.SampleLevel(gProjectionSampler, uv, 0.0f).rgb);
   const float blackFraction = saturate(max(
@@ -662,7 +703,7 @@ float3 EvaluateProjectionLighting(BeautyVSOut i) {
       pow(saturate(dot(normal, halfDirection)), 24.0f) *
       (1.0f - roughness) * 0.04f;
   const float3 fallbackBrdf = i.color * 0.31830988618f + specular;
-  return signal * illuminance * fallbackBrdf;
+  return signal * illuminance * fallbackBrdf * visibility;
 }
 
 float4 PSMainBeauty(BeautyVSOut i) : SV_Target {

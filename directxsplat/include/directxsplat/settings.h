@@ -131,6 +131,9 @@ struct ProjectionLightInput {
   bool radiometricProfileEnabled = false;
   float whiteLevel = 1.0f;
   float spatialUniformity = 1.0f;
+  float shadowBias = 0.001f;
+  uint32_t shadowSlice = 0;
+  bool shadowReady = false;
   bool enabled = false;
 };
 

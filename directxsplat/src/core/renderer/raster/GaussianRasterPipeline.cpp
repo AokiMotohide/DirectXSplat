@@ -295,7 +295,6 @@ Status GaussianRasterPipeline::Initialize(ID3D12Device* device,
   }
   uploadFenceValue_ = uploadFence_ != nullptr ? uploadFence_->GetCompletedValue() : 0;
   s = CreatePipelines();
-  std::fflush(stderr);
   if (!s.ok) {
     ShutdownInternal(true);
     return s;
@@ -2882,7 +2881,6 @@ void GaussianRasterPipeline::Transition(ID3D12GraphicsCommandList* cmd, ID3D12Re
 }
 
 Status GaussianRasterPipeline::CreatePipelines() {
-  std::fflush(stderr);
   ComPtr<ID3DBlob> prepCs;
   ComPtr<ID3DBlob> fillSortTailCs;
   ComPtr<ID3DBlob> sortMetaCs;
@@ -2895,23 +2893,18 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSFillSortTail", "cs_5_1", fillSortTailCs);
   if (!s.ok) return s;
-  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSBuildSortMeta", "cs_5_1", sortMetaCs);
   if (!s.ok) return s;
-  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSBuildOneSweepDispatchArgs", "cs_5_1", buildSortDispatchArgsCs);
   if (!s.ok) return s;
-  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSReset", "cs_5_1", resetCs);
   if (!s.ok) return s;
-  std::fflush(stderr);
   s = CompileShader(embedded::kGaussianComputeShaderName, embedded::kGaussianComputeShaderSource,
                     embedded::kGaussianComputeShaderSize, "CSFinalizeDrawArgs", "cs_5_1", finalizeCs);
   if (!s.ok) return s;
-  std::fflush(stderr);
 
   const D3D12_STATIC_SAMPLER_DESC* pStaticSamplers = nullptr;
   UINT staticSamplerCount = 0;
@@ -2919,7 +2912,6 @@ Status GaussianRasterPipeline::CreatePipelines() {
                                  D3D12_ROOT_SIGNATURE_FLAGS flags,
                                  Microsoft::WRL::ComPtr<ID3D12RootSignature>& out,
                                  const char* label) -> Status {
-    std::fflush(stderr);
     D3D12_ROOT_SIGNATURE_DESC desc{};
     desc.NumParameters = paramCount;
     desc.pParameters = params;
@@ -2935,7 +2927,6 @@ Status GaussianRasterPipeline::CreatePipelines() {
                                             IID_PPV_ARGS(out.GetAddressOf())))) {
       return Status::Error(std::string("failed creating ") + label + " root signature");
     }
-    std::fflush(stderr);
     return Status::Ok();
   };
 
@@ -3041,7 +3032,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
   {
     D3D12_DESCRIPTOR_RANGE projectionCookieRange{};
     projectionCookieRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    projectionCookieRange.NumDescriptors = 1;
+    projectionCookieRange.NumDescriptors = 2;
     projectionCookieRange.BaseShaderRegister = 4;
     projectionCookieRange.RegisterSpace = 0;
     projectionCookieRange.OffsetInDescriptorsFromTableStart = 0;
@@ -3087,7 +3078,6 @@ Status GaussianRasterPipeline::CreatePipelines() {
                             rasterRootSignature_, "raster");
     if (!s.ok) return s;
   }
-  std::fflush(stderr);
 
   auto createComputePso = [&](ID3D12RootSignature* rootSignature, ID3DBlob* shaderBlob,
                               Microsoft::WRL::ComPtr<ID3D12PipelineState>& out,
@@ -3119,9 +3109,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = oneSweep_->Initialize(device_.Get());
   if (!s.ok) return s;
 
-  std::fflush(stderr);
   s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN, false);
-  std::fflush(stderr);
   if (!s.ok) return s;
 
   {
@@ -3271,7 +3259,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     if (scratch->projectionDescriptorHeap == nullptr) {
       D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
       heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-      heapDesc.NumDescriptors = 1;
+      heapDesc.NumDescriptors = 2;
       heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
       if (FAILED(device_->CreateDescriptorHeap(
               &heapDesc,
@@ -3286,6 +3274,29 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
         destination,
         target.projectionCookieCpuSrv,
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    const UINT descriptorSize =
+        device_->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE shadowDestination = destination;
+    shadowDestination.ptr += descriptorSize;
+    if (target.projectionShadowMap.resource != nullptr &&
+        target.projectionShadowMapCpuSrv.ptr != 0) {
+      device_->CopyDescriptorsSimple(
+          1,
+          shadowDestination,
+          target.projectionShadowMapCpuSrv,
+          D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    } else {
+      D3D12_SHADER_RESOURCE_VIEW_DESC nullShadowDesc{};
+      nullShadowDesc.Format = DXGI_FORMAT_R32_FLOAT;
+      nullShadowDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+      nullShadowDesc.Shader4ComponentMapping =
+          D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      nullShadowDesc.Texture2DArray.MipLevels = 1;
+      nullShadowDesc.Texture2DArray.ArraySize = 1;
+      device_->CreateShaderResourceView(
+          nullptr, &nullShadowDesc, shadowDestination);
+    }
     projectionCookieGpuSrv =
         scratch->projectionDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
   }
@@ -3554,6 +3565,15 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
       input.projectionLight.inputTextureHardwareDecoded ? 1u : 0u;
   prepBase.projectionRadiometricProfileEnabled =
       input.projectionLight.radiometricProfileEnabled ? 1u : 0u;
+  prepBase.projectionShadowReady =
+      input.projectionLight.shadowReady &&
+              target.projectionShadowMap.resource != nullptr &&
+              target.projectionShadowMapCpuSrv.ptr != 0
+          ? 1u
+          : 0u;
+  prepBase.projectionShadowBias =
+      std::max(0.0f, input.projectionLight.shadowBias);
+  prepBase.projectionShadowSlice = input.projectionLight.shadowSlice;
   prepBase.sceneCount = runtime.sceneAtlasTail;
   prepBase.paddedCount = runtime.maxPrepareGroups;
   prepBase.setCount = runtime.batchedChunkCount;

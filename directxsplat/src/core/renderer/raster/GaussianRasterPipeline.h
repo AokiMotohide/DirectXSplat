@@ -158,8 +158,12 @@ class GaussianRasterPipeline {
     uint32_t projectionInputTransferFunction = 0;
     uint32_t projectionInputTextureHardwareDecoded = 0;
     uint32_t projectionRadiometricProfileEnabled = 0;
+    uint32_t projectionShadowReady = 0;
+    float projectionShadowBias = 0.001f;
+    uint32_t projectionShadowSlice = 0;
+    uint32_t projectionShadowPad = 0;
   };
-  static_assert(sizeof(PrepConstants) == 480);
+  static_assert(sizeof(PrepConstants) == 496);
 
   using RasterConstants = PrepConstants;
 
