@@ -52,8 +52,9 @@ constexpr size_t AlignUp(size_t value, size_t alignment) {
   return (value + alignment - 1u) & ~(alignment - 1u);
 }
 
-constexpr int ColorPsoKey(DXGI_FORMAT colorFormat) {
-  return static_cast<int>(colorFormat);
+constexpr int ColorPsoKey(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat) {
+  return (static_cast<int>(colorFormat) & 0xffff) |
+         ((static_cast<int>(depthFormat) & 0xffff) << 16);
 }
 
 enum TimestampQueryIndex : uint32_t {
@@ -2605,9 +2606,9 @@ Status GaussianRasterPipeline::InvokeHook(const std::function<void(const RenderH
   return Status::Ok();
 }
 
-Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat) {
+Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat) {
   std::lock_guard<std::mutex> colorLock(colorRasterMutex_);
-  const int cacheKey = ColorPsoKey(colorFormat);
+  const int cacheKey = ColorPsoKey(colorFormat, depthFormat);
   auto existing = colorRasterPsos_.find(cacheKey);
   if (existing != colorRasterPsos_.end() && existing->second != nullptr) {
     return Status::Ok();
@@ -2650,11 +2651,15 @@ Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat) {
   desc.BlendState = blend;
   desc.SampleMask = UINT_MAX;
   desc.RasterizerState = raster;
-  desc.DepthStencilState.DepthEnable = FALSE;
+  const bool depthComposite = depthFormat != DXGI_FORMAT_UNKNOWN;
+  desc.DepthStencilState.DepthEnable = depthComposite ? TRUE : FALSE;
+  desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+  desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
   desc.DepthStencilState.StencilEnable = FALSE;
   desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = colorFormat;
+  desc.DSVFormat = depthComposite ? depthFormat : DXGI_FORMAT_UNKNOWN;
   desc.SampleDesc.Count = 1;
 
   ComPtr<ID3D12PipelineState> pso;
@@ -3066,7 +3071,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = oneSweep_->Initialize(device_.Get());
   if (!s.ok) return s;
 
-  s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM);
+  s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN);
   if (!s.ok) return s;
 
   {
@@ -3158,6 +3163,8 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   refreshFrameResources();
   const bool writeDepth =
       input.settings.outputDepth && target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
+  const bool compositeMeshDepth =
+      target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
 
   auto invokeStage = [&](const std::function<void(const RenderHookContext&)>& hook, RenderHookStage stage) {
     return InvokeHook(hook, stage, commandList, publicSceneHandle, input, target, frameResources, stats);
@@ -3207,7 +3214,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
 
   if (runtime.sceneGaussianCount > 0) {
     try {
-      Status colorStatus = EnsureColorRasterPso(target.colorFormat);
+      Status colorStatus = EnsureColorRasterPso(
+          target.colorFormat,
+          compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN);
       if (!colorStatus.ok) {
         return finish(colorStatus);
       }
@@ -3702,7 +3711,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   Microsoft::WRL::ComPtr<ID3D12PipelineState> colorRasterPso;
   {
     std::lock_guard<std::mutex> colorLock(colorRasterMutex_);
-    auto colorIt = colorRasterPsos_.find(ColorPsoKey(target.colorFormat));
+    auto colorIt = colorRasterPsos_.find(ColorPsoKey(
+        target.colorFormat,
+        compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN));
     if (colorIt == colorRasterPsos_.end() || colorIt->second == nullptr) {
       return finish(Status::Error("failed creating color raster pso"));
     }
@@ -3764,13 +3775,20 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   refreshFrameResources();
 
   transitionManagedTarget(target.colorTarget, currentColorState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  if (compositeMeshDepth) {
+    transitionManagedTarget(target.depthTarget, currentDepthState, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+  }
   if (target.motionVectorsTarget != nullptr && target.motionVectorsRtv.ptr != 0 && target.clearMotionVectors) {
     transitionManagedTarget(target.motionVectorsTarget, currentMotionState, D3D12_RESOURCE_STATE_RENDER_TARGET);
     commandList->ClearRenderTargetView(target.motionVectorsRtv, target.clearMotionVectorsValue, 0, nullptr);
   }
   commandList->RSSetViewports(1, &target.viewport);
   commandList->RSSetScissorRects(1, &target.scissor);
-  commandList->OMSetRenderTargets(1, &target.colorRtv, FALSE, nullptr);
+  commandList->OMSetRenderTargets(
+      1,
+      &target.colorRtv,
+      FALSE,
+      compositeMeshDepth ? &target.depthDsv : nullptr);
   if (target.clearColor) {
     commandList->ClearRenderTargetView(target.colorRtv, target.clearColorValue, 0, nullptr);
   }

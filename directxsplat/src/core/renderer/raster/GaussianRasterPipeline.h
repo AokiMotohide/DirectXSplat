@@ -264,7 +264,7 @@ class GaussianRasterPipeline {
   };
 
   Status CreatePipelines();
-  Status EnsureColorRasterPso(DXGI_FORMAT colorFormat);
+  Status EnsureColorRasterPso(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat);
   Status EnsureDepthRasterPso(DXGI_FORMAT depthFormat);
   Status BuildChunkRuntime(uint64_t chunkId, const GaussianSet& set, VramFormatSettings format, uint32_t strideBytes, uint32_t rgbaOffset, uint32_t shOffset, uint32_t idOffset, UploadedChunkRuntime& out);
   Status AllocateAtlasRange(UploadedSceneRuntime& runtime, uint32_t count, uint32_t& outOffset);
