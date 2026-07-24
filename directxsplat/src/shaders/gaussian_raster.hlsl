@@ -615,7 +615,7 @@ float3 ApplyProjectionEotf(float3 codeValue) {
   return pow(codeValue, clamp(gProjectionInputGamma, 0.1f, 8.0f));
 }
 
-float3 EvaluateProjectionLighting(BeautyVSOut i) {
+float3 EvaluateProjectionLighting(BeautyVSOut i, float roughness, float metallic) {
   if (gProjectionEnabled == 0u) {
     return float3(0.0f, 0.0f, 0.0f);
   }
@@ -702,11 +702,14 @@ float3 EvaluateProjectionLighting(BeautyVSOut i) {
           ? normalize(cameraDirection)
           : normal;
   const float3 halfDirection = normalize(lightDirection + viewDirection);
-  const float roughness = 0.6f;
+  roughness = clamp(roughness, 0.02f, 1.0f);
+  metallic = saturate(metallic);
   const float specular =
-      pow(saturate(dot(normal, halfDirection)), 24.0f) *
-      (1.0f - roughness) * 0.04f;
-  const float3 fallbackBrdf = i.color * 0.31830988618f + specular;
+      pow(saturate(dot(normal, halfDirection)), lerp(96.0f, 2.0f, roughness)) *
+      lerp(0.04f, max(i.color, 0.04f), metallic) *
+      (1.0f - roughness * 0.7f);
+  const float3 fallbackBrdf =
+      i.color * (1.0f - metallic) * 0.31830988618f + specular;
   return signal * illuminance * fallbackBrdf * visibility;
 }
 
@@ -763,6 +766,10 @@ float4 PSMainBeautyProjected(BeautyVSOut i) : SV_Target {
     }
     const float hemisphere =
         0.2f + 0.8f * saturate(normal.y * 0.5f + 0.5f);
+    const bool physical = gApproximateRelighting == 2u;
+    const float roughness =
+        physical ? clamp(gBakedRelightingMix, 0.02f, 1.0f) : 0.6f;
+    const float metallic = physical ? 0.0f : 0.0f;
     const float3 fallbackAlbedo = saturate(i.color);
     const float3 environment =
         fallbackAlbedo *
@@ -770,11 +777,10 @@ float4 PSMainBeautyProjected(BeautyVSOut i) : SV_Target {
         hemisphere *
         0.25f;
     const float3 relit =
-        environment + EvaluateProjectionLighting(i);
-    color = lerp(
-        i.color,
-        relit,
-        saturate(gBakedRelightingMix));
+        environment + EvaluateProjectionLighting(i, roughness, metallic);
+    color = physical
+        ? relit
+        : lerp(i.color, relit, saturate(gBakedRelightingMix));
   }
   return float4(color, alpha);
 }

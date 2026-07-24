@@ -145,6 +145,7 @@ struct RenderInput {
   Vec3 worldCameraPosition{};
   ProjectionLightInput projectionLight{};
   bool approximateRelighting = false;
+  bool physicalRelighting = false;
   float environmentIntensity = 1.0f;
   float bakedRelightingMix = 0.65f;
   RenderSettings settings{};

@@ -3204,12 +3204,12 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   const bool compositeMeshDepth =
       target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
   const bool projectionLighting =
-      input.approximateRelighting &&
+      (input.approximateRelighting || input.physicalRelighting) &&
       input.projectionLight.enabled &&
       target.projectionCookie.resource != nullptr &&
       target.projectionCookieCpuSrv.ptr != 0;
   const bool approximateRelighting =
-      input.approximateRelighting;
+      input.approximateRelighting || input.physicalRelighting;
   D3D12_GPU_DESCRIPTOR_HANDLE projectionCookieGpuSrv{};
 
   auto invokeStage = [&](const std::function<void(const RenderHookContext&)>& hook, RenderHookStage stage) {
@@ -3590,7 +3590,7 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
       std::max(0.0f, input.projectionLight.shadowBias);
   prepBase.projectionShadowSlice = input.projectionLight.shadowSlice;
   prepBase.approximateRelighting =
-      approximateRelighting ? 1u : 0u;
+      input.physicalRelighting ? 2u : (approximateRelighting ? 1u : 0u);
   prepBase.environmentIntensity =
       std::max(0.0f, input.environmentIntensity);
   prepBase.bakedRelightingMix =
