@@ -52,8 +52,10 @@ constexpr size_t AlignUp(size_t value, size_t alignment) {
   return (value + alignment - 1u) & ~(alignment - 1u);
 }
 
-constexpr int ColorPsoKey(DXGI_FORMAT colorFormat) {
-  return static_cast<int>(colorFormat);
+constexpr int ColorPsoKey(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat, bool projectionLighting) {
+  return (static_cast<int>(colorFormat) & 0xffff) |
+         ((static_cast<int>(depthFormat) & 0x3fff) << 16) |
+         (projectionLighting ? 0x40000000 : 0);
 }
 
 enum TimestampQueryIndex : uint32_t {
@@ -1782,6 +1784,9 @@ Status GaussianRasterPipeline::DestroyScene(uint64_t sceneId) {
   lock.lock();
   uploadedScenes_.erase(sceneId);
   lock.unlock();
+  // RendererはDestroyScene()の前に、このsceneのdirect queue fence完了を待つ。
+  // 次のscene描画がない場合も解放を完了できるよう、退役resourceをここで回収する。
+  CollectRetiredResources(CurrentCompletedDirectFenceValue());
   return Status::Ok();
 }
 
@@ -2237,37 +2242,37 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
   ComPtr<ID3D12Resource> drawArgsBuffer;
 
   s = CreateDefaultBuffer(keyBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortKeysBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortKeysBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(keyBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortKeysTempBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortKeysTempBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(valueBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortValuesBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortValuesBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(valueBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortValuesTempBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortValuesTempBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(kVisibleCounterBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, visibleCounterBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, visibleCounterBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(sizeof(SortMetaGpu), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sortMetaBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, sortMetaBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(passHistogramBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepPassHistogramBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepPassHistogramBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(globalHistogramBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepGlobalHistogramBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepGlobalHistogramBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(oneSweepIndexBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepIndexBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepIndexBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(oneSweepDispatchArgsBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, oneSweepDispatchArgsBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, oneSweepDispatchArgsBuffer);
   if (!s.ok) return s;
   s = CreateDefaultBuffer(16u, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, drawArgsBuffer);
+                          D3D12_RESOURCE_STATE_COMMON, drawArgsBuffer);
   if (!s.ok) return s;
 
   s = ReserveRetiredResourceSlots(11);
@@ -2307,17 +2312,17 @@ Status GaussianRasterPipeline::EnsureRenderScratchBuffers(const UploadedSceneRun
   scratch.oneSweepDispatchArgsBuffer = std::move(oneSweepDispatchArgsBuffer);
   scratch.drawArgsBuffer = std::move(drawArgsBuffer);
 
-  scratch.sortKeysState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortKeysTempState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortValuesState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortValuesTempState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.visibleCounterState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.sortMetaState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepPassHistogramState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepGlobalHistogramState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepIndexState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.oneSweepDispatchArgsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  scratch.drawArgsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  scratch.sortKeysState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortKeysTempState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortValuesState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortValuesTempState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.visibleCounterState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.sortMetaState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepPassHistogramState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepGlobalHistogramState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepIndexState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.oneSweepDispatchArgsState = D3D12_RESOURCE_STATE_COMMON;
+  scratch.drawArgsState = D3D12_RESOURCE_STATE_COMMON;
   scratch.drawCapacity = newDrawCapacity;
   scratch.sortPairCapacity = newPairCapacity;
   scratch.oneSweepPartitionCount = newPartitionCount;
@@ -2602,9 +2607,12 @@ Status GaussianRasterPipeline::InvokeHook(const std::function<void(const RenderH
   return Status::Ok();
 }
 
-Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat) {
+Status GaussianRasterPipeline::EnsureColorRasterPso(
+    DXGI_FORMAT colorFormat,
+    DXGI_FORMAT depthFormat,
+    bool projectionLighting) {
   std::lock_guard<std::mutex> colorLock(colorRasterMutex_);
-  const int cacheKey = ColorPsoKey(colorFormat);
+  const int cacheKey = ColorPsoKey(colorFormat, depthFormat, projectionLighting);
   auto existing = colorRasterPsos_.find(cacheKey);
   if (existing != colorRasterPsos_.end() && existing->second != nullptr) {
     return Status::Ok();
@@ -2618,7 +2626,10 @@ Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat) {
     return s;
   }
   s = CompileShader(embedded::kGaussianRasterShaderName, embedded::kGaussianRasterShaderSource,
-                    embedded::kGaussianRasterShaderSize, "PSMainBeauty", "ps_5_1", psBlob);
+                    embedded::kGaussianRasterShaderSize,
+                    projectionLighting ? "PSMainBeautyProjected" : "PSMainBeauty",
+                    "ps_5_1",
+                    psBlob);
   if (!s.ok) {
     return s;
   }
@@ -2647,11 +2658,15 @@ Status GaussianRasterPipeline::EnsureColorRasterPso(DXGI_FORMAT colorFormat) {
   desc.BlendState = blend;
   desc.SampleMask = UINT_MAX;
   desc.RasterizerState = raster;
-  desc.DepthStencilState.DepthEnable = FALSE;
+  const bool depthComposite = depthFormat != DXGI_FORMAT_UNKNOWN;
+  desc.DepthStencilState.DepthEnable = depthComposite ? TRUE : FALSE;
+  desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+  desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
   desc.DepthStencilState.StencilEnable = FALSE;
   desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
   desc.NumRenderTargets = 1;
   desc.RTVFormats[0] = colorFormat;
+  desc.DSVFormat = depthComposite ? depthFormat : DXGI_FORMAT_UNKNOWN;
   desc.SampleDesc.Count = 1;
 
   ComPtr<ID3D12PipelineState> pso;
@@ -2891,6 +2906,8 @@ Status GaussianRasterPipeline::CreatePipelines() {
                     embedded::kGaussianComputeShaderSize, "CSFinalizeDrawArgs", "cs_5_1", finalizeCs);
   if (!s.ok) return s;
 
+  const D3D12_STATIC_SAMPLER_DESC* pStaticSamplers = nullptr;
+  UINT staticSamplerCount = 0;
   auto createRootSignature = [&](D3D12_ROOT_PARAMETER* params, UINT paramCount,
                                  D3D12_ROOT_SIGNATURE_FLAGS flags,
                                  Microsoft::WRL::ComPtr<ID3D12RootSignature>& out,
@@ -2898,6 +2915,8 @@ Status GaussianRasterPipeline::CreatePipelines() {
     D3D12_ROOT_SIGNATURE_DESC desc{};
     desc.NumParameters = paramCount;
     desc.pParameters = params;
+    desc.NumStaticSamplers = staticSamplerCount;
+    desc.pStaticSamplers = pStaticSamplers;
     desc.Flags = flags;
     ComPtr<ID3DBlob> blob;
     ComPtr<ID3DBlob> err;
@@ -3011,7 +3030,30 @@ Status GaussianRasterPipeline::CreatePipelines() {
   }
 
   {
-    D3D12_ROOT_PARAMETER params[5]{};
+    D3D12_DESCRIPTOR_RANGE projectionCookieRange{};
+    projectionCookieRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    projectionCookieRange.NumDescriptors = 2;
+    projectionCookieRange.BaseShaderRegister = 4;
+    projectionCookieRange.RegisterSpace = 0;
+    projectionCookieRange.OffsetInDescriptorsFromTableStart = 0;
+
+    D3D12_STATIC_SAMPLER_DESC projectionSampler{};
+    projectionSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    projectionSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    projectionSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    projectionSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    projectionSampler.MaxAnisotropy = 1;
+    projectionSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    projectionSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+    projectionSampler.MinLOD = 0.0f;
+    projectionSampler.MaxLOD = D3D12_FLOAT32_MAX;
+    projectionSampler.ShaderRegister = 0;
+    projectionSampler.RegisterSpace = 0;
+    projectionSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    pStaticSamplers = &projectionSampler;
+    staticSamplerCount = 1;
+
+    D3D12_ROOT_PARAMETER params[6]{};
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     params[0].Descriptor.ShaderRegister = 0;
     params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -3027,6 +3069,10 @@ Status GaussianRasterPipeline::CreatePipelines() {
     params[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
     params[4].Descriptor.ShaderRegister = 3;
     params[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    params[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    params[5].DescriptorTable.NumDescriptorRanges = 1;
+    params[5].DescriptorTable.pDescriptorRanges = &projectionCookieRange;
+    params[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     s = createRootSignature(params, static_cast<UINT>(std::size(params)),
                             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
                             rasterRootSignature_, "raster");
@@ -3063,7 +3109,7 @@ Status GaussianRasterPipeline::CreatePipelines() {
   s = oneSweep_->Initialize(device_.Get());
   if (!s.ok) return s;
 
-  s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM);
+  s = EnsureColorRasterPso(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN, false);
   if (!s.ok) return s;
 
   {
@@ -3155,6 +3201,16 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   refreshFrameResources();
   const bool writeDepth =
       input.settings.outputDepth && target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
+  const bool compositeMeshDepth =
+      target.depthTarget != nullptr && target.depthDsv.ptr != 0 && target.depthFormat != DXGI_FORMAT_UNKNOWN;
+  const bool projectionLighting =
+      (input.approximateRelighting || input.physicalRelighting) &&
+      input.projectionLight.enabled &&
+      target.projectionCookie.resource != nullptr &&
+      target.projectionCookieCpuSrv.ptr != 0;
+  const bool approximateRelighting =
+      input.approximateRelighting || input.physicalRelighting;
+  D3D12_GPU_DESCRIPTOR_HANDLE projectionCookieGpuSrv{};
 
   auto invokeStage = [&](const std::function<void(const RenderHookContext&)>& hook, RenderHookStage stage) {
     return InvokeHook(hook, stage, commandList, publicSceneHandle, input, target, frameResources, stats);
@@ -3202,9 +3258,70 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     return status;
   };
 
+  if (approximateRelighting) {
+    if (scratch->projectionDescriptorHeap == nullptr) {
+      D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+      heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+      heapDesc.NumDescriptors = 2;
+      heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+      if (FAILED(device_->CreateDescriptorHeap(
+              &heapDesc,
+              IID_PPV_ARGS(scratch->projectionDescriptorHeap.GetAddressOf())))) {
+        return finish(Status::Error("failed creating projection descriptor heap"));
+      }
+    }
+    const D3D12_CPU_DESCRIPTOR_HANDLE destination =
+        scratch->projectionDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    if (target.projectionCookie.resource != nullptr &&
+        target.projectionCookieCpuSrv.ptr != 0) {
+      device_->CopyDescriptorsSimple(
+          1,
+          destination,
+          target.projectionCookieCpuSrv,
+          D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    } else {
+      D3D12_SHADER_RESOURCE_VIEW_DESC nullCookieDesc{};
+      nullCookieDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      nullCookieDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+      nullCookieDesc.Shader4ComponentMapping =
+          D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      nullCookieDesc.Texture2D.MipLevels = 1;
+      device_->CreateShaderResourceView(
+          nullptr, &nullCookieDesc, destination);
+    }
+    const UINT descriptorSize =
+        device_->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE shadowDestination = destination;
+    shadowDestination.ptr += descriptorSize;
+    if (target.projectionShadowMap.resource != nullptr &&
+        target.projectionShadowMapCpuSrv.ptr != 0) {
+      device_->CopyDescriptorsSimple(
+          1,
+          shadowDestination,
+          target.projectionShadowMapCpuSrv,
+          D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    } else {
+      D3D12_SHADER_RESOURCE_VIEW_DESC nullShadowDesc{};
+      nullShadowDesc.Format = DXGI_FORMAT_R32_FLOAT;
+      nullShadowDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+      nullShadowDesc.Shader4ComponentMapping =
+          D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+      nullShadowDesc.Texture2DArray.MipLevels = 1;
+      nullShadowDesc.Texture2DArray.ArraySize = 1;
+      device_->CreateShaderResourceView(
+          nullptr, &nullShadowDesc, shadowDestination);
+    }
+    projectionCookieGpuSrv =
+        scratch->projectionDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+  }
+
   if (runtime.sceneGaussianCount > 0) {
     try {
-      Status colorStatus = EnsureColorRasterPso(target.colorFormat);
+      Status colorStatus = EnsureColorRasterPso(
+          target.colorFormat,
+          compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN,
+          approximateRelighting);
       if (!colorStatus.ok) {
         return finish(colorStatus);
       }
@@ -3244,6 +3361,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   }
 
   commandsRecorded = true;
+  // Host rendererが残したDATA_STATIC root descriptorを、UAV/RT状態変更より先に無効化する。
+  // D3D12 interopではgraphics root stateとcompute root stateが独立して保持される。
+  commandList->SetGraphicsRootSignature(rasterRootSignature_.Get());
   if (options != nullptr && options->hooks != nullptr) {
     Status hookStatus = invokeStage(options->hooks->beforePrepare, RenderHookStage::BeforePrepare);
     if (!hookStatus.ok) {
@@ -3432,6 +3552,49 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   prepBase.rgbaOffset = runtime.rgbaOffset;
   prepBase.shOffset = runtime.shOffset;
   prepBase.idOffset = runtime.idOffset;
+  std::memcpy(prepBase.model, input.model.m.data(), sizeof(prepBase.model));
+  prepBase.worldCameraPos[0] = input.worldCameraPosition.x;
+  prepBase.worldCameraPos[1] = input.worldCameraPosition.y;
+  prepBase.worldCameraPos[2] = input.worldCameraPosition.z;
+  prepBase.projectionEnabled = projectionLighting ? 1u : 0u;
+  std::memcpy(
+      prepBase.projectionViewProj,
+      input.projectionLight.viewProj.m.data(),
+      sizeof(prepBase.projectionViewProj));
+  prepBase.projectionPosition[0] = input.projectionLight.position.x;
+  prepBase.projectionPosition[1] = input.projectionLight.position.y;
+  prepBase.projectionPosition[2] = input.projectionLight.position.z;
+  prepBase.projectionLumens = std::max(0.0f, input.projectionLight.lumens);
+  prepBase.projectionColorTint[0] = input.projectionLight.colorTint.x;
+  prepBase.projectionColorTint[1] = input.projectionLight.colorTint.y;
+  prepBase.projectionColorTint[2] = input.projectionLight.colorTint.z;
+  prepBase.projectionBlackLevel = std::max(0.0f, input.projectionLight.blackLevel);
+  prepBase.projectionSolidAngle = std::max(0.0001f, input.projectionLight.solidAngle);
+  prepBase.projectionContrastRatio = std::max(1.0f, input.projectionLight.contrastRatio);
+  prepBase.projectionInputGamma = std::clamp(input.projectionLight.inputGamma, 0.1f, 8.0f);
+  prepBase.projectionWhiteLevel = std::clamp(input.projectionLight.whiteLevel, 0.0f, 4.0f);
+  prepBase.projectionSpatialUniformity =
+      std::clamp(input.projectionLight.spatialUniformity, 0.0f, 2.0f);
+  prepBase.projectionInputTransferFunction = input.projectionLight.inputTransferFunction;
+  prepBase.projectionInputTextureHardwareDecoded =
+      input.projectionLight.inputTextureHardwareDecoded ? 1u : 0u;
+  prepBase.projectionRadiometricProfileEnabled =
+      input.projectionLight.radiometricProfileEnabled ? 1u : 0u;
+  prepBase.projectionShadowReady =
+      input.projectionLight.shadowReady &&
+              target.projectionShadowMap.resource != nullptr &&
+              target.projectionShadowMapCpuSrv.ptr != 0
+          ? 1u
+          : 0u;
+  prepBase.projectionShadowBias =
+      std::max(0.0f, input.projectionLight.shadowBias);
+  prepBase.projectionShadowSlice = input.projectionLight.shadowSlice;
+  prepBase.approximateRelighting =
+      input.physicalRelighting ? 2u : (approximateRelighting ? 1u : 0u);
+  prepBase.environmentIntensity =
+      std::max(0.0f, input.environmentIntensity);
+  prepBase.bakedRelightingMix =
+      std::clamp(input.bakedRelightingMix, 0.0f, 1.0f);
   prepBase.sceneCount = runtime.sceneAtlasTail;
   prepBase.paddedCount = runtime.maxPrepareGroups;
   prepBase.setCount = runtime.batchedChunkCount;
@@ -3696,7 +3859,10 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   Microsoft::WRL::ComPtr<ID3D12PipelineState> colorRasterPso;
   {
     std::lock_guard<std::mutex> colorLock(colorRasterMutex_);
-    auto colorIt = colorRasterPsos_.find(ColorPsoKey(target.colorFormat));
+    auto colorIt = colorRasterPsos_.find(ColorPsoKey(
+        target.colorFormat,
+        compositeMeshDepth ? target.depthFormat : DXGI_FORMAT_UNKNOWN,
+        approximateRelighting));
     if (colorIt == colorRasterPsos_.end() || colorIt->second == nullptr) {
       return finish(Status::Error("failed creating color raster pso"));
     }
@@ -3758,13 +3924,20 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
   refreshFrameResources();
 
   transitionManagedTarget(target.colorTarget, currentColorState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+  if (compositeMeshDepth) {
+    transitionManagedTarget(target.depthTarget, currentDepthState, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+  }
   if (target.motionVectorsTarget != nullptr && target.motionVectorsRtv.ptr != 0 && target.clearMotionVectors) {
     transitionManagedTarget(target.motionVectorsTarget, currentMotionState, D3D12_RESOURCE_STATE_RENDER_TARGET);
     commandList->ClearRenderTargetView(target.motionVectorsRtv, target.clearMotionVectorsValue, 0, nullptr);
   }
   commandList->RSSetViewports(1, &target.viewport);
   commandList->RSSetScissorRects(1, &target.scissor);
-  commandList->OMSetRenderTargets(1, &target.colorRtv, FALSE, nullptr);
+  commandList->OMSetRenderTargets(
+      1,
+      &target.colorRtv,
+      FALSE,
+      compositeMeshDepth ? &target.depthDsv : nullptr);
   if (target.clearColor) {
     commandList->ClearRenderTargetView(target.colorRtv, target.clearColorValue, 0, nullptr);
   }
@@ -3781,12 +3954,19 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
 
   commandList->SetPipelineState(colorRasterPso.Get());
   commandList->SetGraphicsRootSignature(rasterRootSignature_.Get());
+  if (approximateRelighting) {
+    ID3D12DescriptorHeap* heaps[] = {scratch->projectionDescriptorHeap.Get()};
+    commandList->SetDescriptorHeaps(1, heaps);
+  }
   commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
   commandList->SetGraphicsRootConstantBufferView(0, scratch->rasterConstantsUpload->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(1, runtime.sceneAtlasBuffer->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(2, sortedValuesAddress);
   commandList->SetGraphicsRootShaderResourceView(3, runtime.batchedChunkParamsUpload->GetGPUVirtualAddress());
   commandList->SetGraphicsRootShaderResourceView(4, runtime.sceneIndexToChunkBuffer->GetGPUVirtualAddress());
+  if (approximateRelighting) {
+    commandList->SetGraphicsRootDescriptorTable(5, projectionCookieGpuSrv);
+  }
   commandList->ExecuteIndirect(drawCommandSignature_.Get(), 1, scratch->drawArgsBuffer.Get(), 0, nullptr, 0);
   writeTimestamp(kTimestampRasterEnd);
 
@@ -3806,6 +3986,9 @@ Status GaussianRasterPipeline::Render(ID3D12GraphicsCommandList* commandList,
     commandList->SetGraphicsRootShaderResourceView(2, sortedValuesAddress);
     commandList->SetGraphicsRootShaderResourceView(3, runtime.batchedChunkParamsUpload->GetGPUVirtualAddress());
     commandList->SetGraphicsRootShaderResourceView(4, runtime.sceneIndexToChunkBuffer->GetGPUVirtualAddress());
+    if (approximateRelighting) {
+      commandList->SetGraphicsRootDescriptorTable(5, projectionCookieGpuSrv);
+    }
     commandList->ExecuteIndirect(drawCommandSignature_.Get(), 1, scratch->drawArgsBuffer.Get(), 0, nullptr, 0);
     writeTimestamp(kTimestampDepthEnd);
     frameResources.depthOutput = DepthOutputKind::ApproximateSplatDepth;

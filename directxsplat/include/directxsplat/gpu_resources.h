@@ -100,6 +100,11 @@ struct RenderTargetBinding {
   uint8_t clearStencilValue = 0;
   bool clearMotionVectors = false;
   float clearMotionVectorsValue[4]{0.0f, 0.0f, 0.0f, 0.0f};
+
+  GpuTextureView projectionCookie{};
+  D3D12_CPU_DESCRIPTOR_HANDLE projectionCookieCpuSrv{};
+  GpuTextureView projectionShadowMap{};
+  D3D12_CPU_DESCRIPTOR_HANDLE projectionShadowMapCpuSrv{};
 };
 
 struct RenderFrameContext {

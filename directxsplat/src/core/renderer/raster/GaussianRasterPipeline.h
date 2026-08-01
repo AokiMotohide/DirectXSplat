@@ -142,8 +142,32 @@ class GaussianRasterPipeline {
     uint32_t shOffset = 32;
     uint32_t idOffset = 124;
     uint32_t pad3 = 0;
+    float model[16]{};
+    float worldCameraPos[3]{};
+    uint32_t projectionEnabled = 0;
+    float projectionViewProj[16]{};
+    float projectionPosition[3]{};
+    float projectionLumens = 0.0f;
+    float projectionColorTint[3]{1.0f, 1.0f, 1.0f};
+    float projectionBlackLevel = 0.0f;
+    float projectionSolidAngle = 1.0f;
+    float projectionContrastRatio = 1000.0f;
+    float projectionInputGamma = 2.2f;
+    float projectionWhiteLevel = 1.0f;
+    float projectionSpatialUniformity = 1.0f;
+    uint32_t projectionInputTransferFunction = 0;
+    uint32_t projectionInputTextureHardwareDecoded = 0;
+    uint32_t projectionRadiometricProfileEnabled = 0;
+    uint32_t projectionShadowReady = 0;
+    float projectionShadowBias = 0.001f;
+    uint32_t projectionShadowSlice = 0;
+    uint32_t projectionShadowPad = 0;
+    uint32_t approximateRelighting = 0;
+    float environmentIntensity = 1.0f;
+    float bakedRelightingMix = 0.65f;
+    uint32_t relightingPad = 0;
   };
-  static_assert(sizeof(PrepConstants) == 272);
+  static_assert(sizeof(PrepConstants) == 512);
 
   using RasterConstants = PrepConstants;
 
@@ -165,6 +189,7 @@ class GaussianRasterPipeline {
     Microsoft::WRL::ComPtr<ID3D12Resource> drawArgsBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> prepConstantsUpload;
     Microsoft::WRL::ComPtr<ID3D12Resource> rasterConstantsUpload;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> projectionDescriptorHeap;
 
     D3D12_RESOURCE_STATES sortKeysState = D3D12_RESOURCE_STATE_COMMON;
     D3D12_RESOURCE_STATES sortKeysTempState = D3D12_RESOURCE_STATE_COMMON;
@@ -264,7 +289,7 @@ class GaussianRasterPipeline {
   };
 
   Status CreatePipelines();
-  Status EnsureColorRasterPso(DXGI_FORMAT colorFormat);
+  Status EnsureColorRasterPso(DXGI_FORMAT colorFormat, DXGI_FORMAT depthFormat, bool projectionLighting);
   Status EnsureDepthRasterPso(DXGI_FORMAT depthFormat);
   Status BuildChunkRuntime(uint64_t chunkId, const GaussianSet& set, VramFormatSettings format, uint32_t strideBytes, uint32_t rgbaOffset, uint32_t shOffset, uint32_t idOffset, UploadedChunkRuntime& out);
   Status AllocateAtlasRange(UploadedSceneRuntime& runtime, uint32_t count, uint32_t& outOffset);

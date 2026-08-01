@@ -117,10 +117,37 @@ struct FrameStats {
   HistogramData projectionActiveThreads{};
 };
 
+struct ProjectionLightInput {
+  Mat4 viewProj{};
+  Vec3 position{};
+  Vec3 colorTint{1.0f, 1.0f, 1.0f};
+  float lumens = 0.0f;
+  float blackLevel = 0.0f;
+  float solidAngle = 1.0f;
+  float contrastRatio = 1000.0f;
+  uint32_t inputTransferFunction = 0;
+  float inputGamma = 2.2f;
+  bool inputTextureHardwareDecoded = false;
+  bool radiometricProfileEnabled = false;
+  float whiteLevel = 1.0f;
+  float spatialUniformity = 1.0f;
+  float shadowBias = 0.001f;
+  uint32_t shadowSlice = 0;
+  bool shadowReady = false;
+  bool enabled = false;
+};
+
 struct RenderInput {
   Mat4 view{};
   Mat4 proj{};
+  Mat4 model{};
   Vec3 cameraPosition{};
+  Vec3 worldCameraPosition{};
+  ProjectionLightInput projectionLight{};
+  bool approximateRelighting = false;
+  bool physicalRelighting = false;
+  float environmentIntensity = 1.0f;
+  float bakedRelightingMix = 0.65f;
   RenderSettings settings{};
   uint32_t viewportWidth = 1;
   uint32_t viewportHeight = 1;
